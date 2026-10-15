@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -13,6 +14,14 @@ type Config struct {
 	AuthEnabled bool
 	DefaultUser string
 	DefaultPass string
+
+	// Start of scylla implementation
+	ScyllaHosts       []string
+	ScyllaKeyspace    string
+	ScyllaUsername    string
+	ScyllaPassword    string
+	ScyllaConsistency string
+	ScyllaTimeout     time.Duration
 }
 
 func loadConfig() Config {
@@ -24,6 +33,13 @@ func loadConfig() Config {
 		AuthEnabled: getEnvBool("AUTH_ENABLED", true),
 		DefaultUser: getEnv("DEFAULT_USER", "definitelynotroot"),
 		DefaultPass: getEnv("DEFAULT_PASS", "definitelynotpassword"),
+
+		ScyllaHosts:       strings.Split(getEnv("SCYLLA_HOSTS", "127.0.0.1"), ","),
+		ScyllaKeyspace:    getEnv("SCYLLA_KEYSPACE", "wikistream"),
+		ScyllaUsername:    getEnv("SCYLLA_USERNAME", ""),
+		ScyllaPassword:    getEnv("SCYLLA_PASSWORD", ""),
+		ScyllaConsistency: getEnv("SCYLLA_CONSISTENCY", "LOCAL_QUORUM"),
+		ScyllaTimeout:     getDuration("SCYLLA_TIMEOUT", 5*time.Second),
 	}
 }
 
@@ -49,4 +65,18 @@ func getEnvBool(key string, fallback bool) bool {
 	default:
 		return fallback
 	}
+}
+
+func getDuration(key string, fallback time.Duration) time.Duration {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+
+	duration, err := time.ParseDuration(val)
+	if err != nil {
+		return fallback
+	}
+
+	return duration
 }

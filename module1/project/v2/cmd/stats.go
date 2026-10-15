@@ -1,6 +1,9 @@
 package main
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 // Struct for reading in data from messages retrieved from stream endpoint
 // Using `json` decorators to help serialize values from payload
@@ -29,6 +32,18 @@ type ServerStatsSnapshot struct {
 	HumanCount      uint64            `json:"humanCount"`
 	ByServerURL     map[string]uint64 `json:"byServerURL"`
 	LastError       string            `json:"lastError"`
+}
+
+// Struct for supporting Time series data in Scylla db eventually
+type StatsBucket struct {
+	BucketStart time.Time
+	MetricName  string
+	InstanceID  string
+	Processed   uint64
+	UniqueUsers uint64
+	BotCount    uint64
+	HumanCount  uint64
+	ServerURL   string
 }
 
 // A ton of helpers for the /stats endpoint
