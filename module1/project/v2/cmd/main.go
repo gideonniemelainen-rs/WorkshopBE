@@ -24,6 +24,7 @@ func main() {
 		log.Fatalf("failed to create app: %v", err)
 	}
 
+	// I tried setting up a shutdown signal but did not work as intended.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -35,8 +36,30 @@ func main() {
 
 	go app.startFlushLoop(ctx, 30*time.Second)
 
+	httpServer := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           app.router(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	// Continued attempts at implementing graceful shutdown
+	go func() {
+		<-ctx.Done()
+		log.Println("Shutting down server")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Server shutdown error")
+		}
+	}()
+
 	log.Printf("HTTP Server listening on %s", cfg.HTTPAddr)
-	if err := http.ListenAndServe(cfg.HTTPAddr, app.router()); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 
