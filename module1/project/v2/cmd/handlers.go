@@ -1,27 +1,53 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type App struct {
 	cfg   Config
 	stats *ServerStats
 	auth  *AuthService
+	store Store
 }
 
 // Small handler to run on it
-func newApp(cfg Config) *App {
+func newApp(cfg Config) (*App, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	// Check for storage config on startup now
+	var store Store
+	switch cfg.StorageMode {
+	case "memory":
+		store = newMemoryStore()
+	case "scylla":
+		scyllaStore, err := newScyllaStore(cfg)
+		if err != nil {
+			return nil, err
+		}
+		store = scyllaStore
+	default:
+		return nil, fmt.Errorf("unsupported storage mode: %s", cfg.StorageMode)
+	}
+
+	users := map[string]string{
+		cfg.DefaultUser: cfg.DefaultPass,
+	}
+
 	return &App{
 		cfg:   cfg,
-		stats: newServerStats(),
-		auth: newAuthService(cfg.JWTSecret, map[string]string{
-			cfg.DefaultUser: cfg.DefaultPass,
-		}),
-	}
+		auth:  newAuthService(cfg.JWTSecret, users),
+		store: store,
+		stats: store.(*MemoryStore).stats,
+	}, nil
 }
 
 // build the actual app router, to borrow some terminology from Next
@@ -131,5 +157,23 @@ func (a *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		// TODO cleanup? Might be worth spinning up a tiny rejectAuth helper to DRY this out^^
 
 		next(w, r)
+	}
+}
+
+// Start flush loop to support time series data
+func (a *App) startFlushLoop(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			_ = a.store.Flush()
+			return
+		case <-ticker.C:
+			if err := a.store.Flush(); err != nil {
+				log.Printf("flush error: %v", err)
+			}
+		}
 	}
 }

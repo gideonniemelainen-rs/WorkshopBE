@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ type Config struct {
 	AuthEnabled bool
 	DefaultUser string
 	DefaultPass string
+	StorageMode string
 
 	// Start of scylla implementation
 	ScyllaHosts       []string
@@ -33,6 +35,7 @@ func loadConfig() Config {
 		AuthEnabled: getEnvBool("AUTH_ENABLED", true),
 		DefaultUser: getEnv("DEFAULT_USER", "definitelynotroot"),
 		DefaultPass: getEnv("DEFAULT_PASS", "definitelynotpassword"),
+		StorageMode: getEnv("STORAGE_MODE", "memory"),
 
 		ScyllaHosts:       strings.Split(getEnv("SCYLLA_HOSTS", "127.0.0.1"), ","),
 		ScyllaKeyspace:    getEnv("SCYLLA_KEYSPACE", "wikistream"),
@@ -41,6 +44,29 @@ func loadConfig() Config {
 		ScyllaConsistency: getEnv("SCYLLA_CONSISTENCY", "LOCAL_QUORUM"),
 		ScyllaTimeout:     getDuration("SCYLLA_TIMEOUT", 5*time.Second),
 	}
+}
+
+func (c Config) Validate() error {
+	switch c.StorageMode {
+	case "memory", "scylla":
+	default:
+		return fmt.Errorf("unsupported STORAGE_MODE: %q", c.StorageMode)
+	}
+
+	if c.StorageMode == "scylla" {
+		if c.ScyllaKeyspace == "" {
+			return fmt.Errorf("SCYLLA_KEYSPACE is required when STORAGE_MODE=scylla")
+		}
+		if len(c.ScyllaHosts) == 0 || c.ScyllaHosts[0] == "" {
+			return fmt.Errorf("SCYLLA_HOSTS is required when STORAGE_MODE=scylla")
+		}
+	}
+
+	if c.AuthEnabled && c.JWTSecret == "" {
+		return fmt.Errorf("JWT_SECRET is required when AUTH_ENABLED=true")
+	}
+
+	return nil
 }
 
 func getEnv(key string, fallback string) string {

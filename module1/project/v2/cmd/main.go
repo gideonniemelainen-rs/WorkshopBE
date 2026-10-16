@@ -8,11 +8,21 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 func main() {
+	// Load configuration on startup
 	cfg := loadConfig()
-	app := newApp(cfg)
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid config: %v", err)
+	}
+
+	// Init app using new app helper
+	app, err := newApp(cfg)
+	if err != nil {
+		log.Fatalf("failed to create app: %v", err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -22,6 +32,8 @@ func main() {
 			log.Printf("stream consumer error: %v", err)
 		}
 	}()
+
+	go app.startFlushLoop(ctx, 30*time.Second)
 
 	log.Printf("HTTP Server listening on %s", cfg.HTTPAddr)
 	if err := http.ListenAndServe(cfg.HTTPAddr, app.router()); err != nil && !errors.Is(err, http.ErrServerClosed) {
