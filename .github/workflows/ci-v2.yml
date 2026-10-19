@@ -23,4 +23,4 @@ jobs:
           cache-dependency-path: project/v2/cmd/go.sum
       
       - name: run unit tests
-        run: go test ./... -count1 -p=1
+        run: go test ./... -count=1 -p=1
