@@ -1,0 +1,44 @@
+version: "3"
+
+services:
+  scylla:
+    image: scylladb/scylla
+    container_name: wikistream-scylla
+    command: ["--smp", "1", "--memory", "1G", "--overprovisioned=1"]
+    ports:
+      - "9042:9042"
+      - "9180:9180"
+    volumes:
+      - scylla-data:/var/lib/scylla
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' 127.0.0.1 9042 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - wikistream-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wikistream-app
+    depends_on:
+      scylla:
+        condition: service_healthy
+    ports:
+      - "7000:7000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - wikistream-net
+
+volumes:
+  scylla-data:
+
+networks:
+  wikistream-net:
+    driver: bridge
