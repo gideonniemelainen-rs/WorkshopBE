@@ -12,7 +12,6 @@ import (
 
 type App struct {
 	cfg   Config
-	stats *ServerStats
 	auth  *AuthService
 	store Store
 }
@@ -46,7 +45,6 @@ func newApp(cfg Config) (*App, error) {
 		cfg:   cfg,
 		auth:  newAuthService(cfg.JWTSecret, users),
 		store: store,
-		stats: store.(*MemoryStore).stats,
 	}, nil
 }
 
@@ -73,7 +71,7 @@ func (a *App) router() http.Handler {
 			return
 		}
 
-		snapshot := a.stats.Snapshot()
+		snapshot := a.store.Snapshot()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(snapshot)

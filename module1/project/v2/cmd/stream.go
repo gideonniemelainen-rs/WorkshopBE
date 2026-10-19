@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func consumeEventStream(ctx context.Context, client *http.Client, url string, userAgent string, stats *ServerStats) error {
+func consumeEventStream(ctx context.Context, client *http.Client, url string, userAgent string, store Store) error {
 	// Set up tracking id and sensible limits to avoid hammering the API
 	var lastEventID string
 	backoff := time.Second
@@ -44,7 +44,7 @@ func consumeEventStream(ctx context.Context, client *http.Client, url string, us
 		resp, err := client.Do(req)
 		// Handle generic error
 		if err != nil {
-			stats.SetError(err)
+			store.SetError(err)
 			log.Printf("Connect error: %v (retrying in %s)", err, backoff)
 			// sleep thread (just like in the course!)
 			time.Sleep(backoff)
@@ -57,7 +57,7 @@ func consumeEventStream(ctx context.Context, client *http.Client, url string, us
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
 			err = errors.New(resp.Status)
-			stats.SetError(err)
+			store.SetError(err)
 			log.Printf("Bad status: %s (retrying in %s)", err, backoff)
 			time.Sleep(backoff)
 			backoff = minDuration(backoff*2, maxBackoff)
@@ -66,7 +66,7 @@ func consumeEventStream(ctx context.Context, client *http.Client, url string, us
 
 		// reset backoff if everything okay
 		backoff = time.Second
-		stats.SetError(nil)
+		store.SetError(nil)
 
 		// create a scanner to read response body
 		scanner := bufio.NewScanner(resp.Body)
@@ -85,10 +85,10 @@ func consumeEventStream(ctx context.Context, client *http.Client, url string, us
 
 					var rc RecentChange
 					if err := json.Unmarshal([]byte(payload), &rc); err != nil {
-						stats.SetError(err)
+						store.SetError(err)
 						log.Printf("json decode error: %v", err)
 					} else {
-						stats.Record(rc)
+						store.Record(rc)
 					}
 					lines = lines[:0]
 				}
