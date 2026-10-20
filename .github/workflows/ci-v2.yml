@@ -31,5 +31,36 @@ jobs:
         run: go test ./... -count=1 -p=1
 
   # Integration Tests
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.APP_DIR}}/go.mod
+          cache-dependency-path: ${{ env.APP_DIR}}/go.sum
+
+      - name: Start Scylla Cluster
+        run: |
+          docker run -d --name scylla-cluster -p 9042:9042 scylladb/scylla:6.2 \
+          --smp 1 --memory 512M --overprovisioned=1
+
+      - name: Wait for Scylla cluster
+        run: |
+          for i in $(seq 1 60); do
+            if docker exec scylla-cluster cqlsh -e 'DESCRIBE KEYSPACES' >/dev/null; then
+              echo 'Scylla cluster ready'
+            fi
+            sleep 5
+          done
+          docker logs scylla-cluster
+          exit 1
+      - name: Integration testing
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          SCYLLA_HOST: 127.0.0.1
+        run: go test -tags=integration ./... -count=1 -p=1
+
   # Build Image
   # Publish artifact
