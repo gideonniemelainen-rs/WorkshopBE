@@ -76,7 +76,7 @@ jobs:
       - name: Integration testing
         working-directory: ${{ env.APP_DIR }}
         env:
-          SCYLLA_HOSTS: [127.0.0.1]
+          SCYLLA_HOSTS: 127.0.0.1
         run: go test -tags=integration ./... -count=1 -p=1
 
   # Build Image
