@@ -17,8 +17,8 @@ Each version lives in its own directory with the application code under `cmd/`.
 | Version | Modules | Focus | Status |
 |---|---|---|---|
 | **v1** | 1–2 | Initial implementation and first run at dockerization | Done |
-| **v2** | 3–4 | Scylla DB, Docker Compose, CI/CD via GitHub Actions | In progress |
-| **v3** | 5–7 | RedPanda, Protobuf support, observability | Planned |
+| **v2** | 3–4 | Scylla DB, Docker Compose, CI/CD via GitHub Actions | Done |
+| **v3** | 5–7 | RedPanda, Protobuf support, observability | In-Progress |
 | **v4** | 8–10 | Multi-threading, Kubernetes conversion, RedPanda Connect for the final presentation | Planned |
 
 ### v1: Core service
