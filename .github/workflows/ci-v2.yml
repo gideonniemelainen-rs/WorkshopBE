@@ -10,8 +10,6 @@ concurrency:
   group: ci-v2-${{ github.ref }}
   cancel-in-progress: true
 
-permissions: read
-
 env:
   APP_DIR: project/v2/cmd
 
