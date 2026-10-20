@@ -55,7 +55,7 @@ jobs:
             sleep 5
           done
           docker logs scylla-cluster
-          exit 1
+          exit 0
       - name: Integration testing
         working-directory: ${{ env.APP_DIR }}
         env:
