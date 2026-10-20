@@ -61,7 +61,7 @@ func (a *App) router() http.Handler {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Ok"))
+		_, _ = w.Write([]byte("Ok"))
 	})
 
 	// Stats endpoint, a bit simplified from previous

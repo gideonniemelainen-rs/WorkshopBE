@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -55,7 +54,7 @@ func consumeEventStream(ctx context.Context, client *http.Client, url string, us
 
 		// Handle not okay response
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			err = errors.New(resp.Status)
 			store.SetError(err)
 			log.Printf("Bad status: %s (retrying in %s)", err, backoff)
@@ -112,7 +111,7 @@ func consumeEventStream(ctx context.Context, client *http.Client, url string, us
 
 		}
 
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -127,16 +126,6 @@ func consumeEventStream(ctx context.Context, client *http.Client, url string, us
 		time.Sleep(backoff)
 		backoff = minDuration(backoff*2, maxBackoff)
 	}
-}
-
-func handleEvent(data []byte) error {
-	var recent_change RecentChange
-	if err := json.Unmarshal(data, &recent_change); err != nil {
-		return fmt.Errorf("json decode: %w", err)
-	}
-
-	log.Printf("user=%q wiki=%q bot=%t", recent_change.User, recent_change.ServerURL, recent_change.Bot)
-	return nil
 }
 
 // Helper for normalizing sleep duration
