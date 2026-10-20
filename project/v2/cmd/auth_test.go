@@ -17,3 +17,35 @@ func TestAuthServiceCheckPassword(t *testing.T) {
 		t.Fatalf("expected password check to fail for missing user")
 	}
 }
+
+func TestAuthServiceIssueAndValidateToken(t *testing.T) {
+	auth := newAuthService("test-secret", nil)
+
+	token, err := auth.issueToken("admin")
+	if err != nil {
+		t.Fatalf("issue token returned error: %v", err)
+	}
+
+	user, ok := auth.ValidateToken(token)
+	if !ok {
+		t.Fatal("expected successful token validation")
+	}
+	if user != "admin" {
+		t.Fatalf("expected user admin, got %q", user)
+	}
+}
+
+func TestAuthServiceValidateTokenRejectsTamperedToken(t *testing.T) {
+	auth := newAuthService("test-secret", nil)
+
+	token, err := auth.issueToken("admin")
+	if err != nil {
+		t.Fatalf("issueToken returned error: %v", err)
+	}
+
+	tampered := token + "lookatmeimuptonogood"
+	_, ok := auth.ValidateToken(tampered)
+	if ok {
+		t.Fatal("expected tampered token to fail validation")
+	}
+}
