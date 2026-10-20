@@ -67,12 +67,12 @@ jobs:
         run: |
           for i in $(seq 1 5); do
             if docker exec scylla-cluster cqlsh -e 'DESCRIBE KEYSPACES' >/dev/null; then
-              echo 'Scylla cluster ready'
+              echo 'Scylla cluster ready'; exit 0
             fi
             sleep 5
           done
           docker logs scylla-cluster
-          exit 0
+          exit 1
       - name: Integration testing
         working-directory: ${{ env.APP_DIR }}
         env:

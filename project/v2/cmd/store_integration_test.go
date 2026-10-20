@@ -9,7 +9,7 @@ import (
 )
 
 func TestScyllaStoreInitAndFlushPersistsRow(t *testing.T) {
-	host := os.Getenv("SCYLLA_HOST")
+	host := os.Getenv("SCYLLA_HOSTS")
 	if host == "" {
 		host = "127.0.0.1"
 	}
