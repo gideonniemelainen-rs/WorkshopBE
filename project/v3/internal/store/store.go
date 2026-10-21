@@ -1,4 +1,4 @@
-package main
+package store
 
 import (
 	"fmt"
@@ -6,28 +6,31 @@ import (
 	"sync"
 	"time"
 
+	"wikistream_project/internal/config"
+	"wikistream_project/internal/models"
+
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
 // Shared Interface between in-memory and scylla stores. Due to the use case of supporting eventual time-series reporting, the actual implementations will look quite different
 type Store interface {
-	Record(RecentChange)
+	Record(models.RecentChange)
 	SetError(error)
-	Snapshot() ServerStatsSnapshot
+	Snapshot() models.ServerStatsSnapshot
 	Flush() error
 	Close() error
 }
 
 // In-Memory Store setup
 type MemoryStore struct {
-	stats *ServerStats
+	stats *models.ServerStats
 }
 
-func newMemoryStore() *MemoryStore {
-	return &MemoryStore{stats: newServerStats()}
+func NewMemoryStore() *MemoryStore {
+	return &MemoryStore{stats: models.NewServerStats()}
 }
 
-func (m *MemoryStore) Record(rc RecentChange) {
+func (m *MemoryStore) Record(rc models.RecentChange) {
 	m.stats.Record(rc)
 }
 
@@ -35,7 +38,7 @@ func (m *MemoryStore) SetError(err error) {
 	m.stats.SetError(err)
 }
 
-func (m *MemoryStore) Snapshot() ServerStatsSnapshot {
+func (m *MemoryStore) Snapshot() models.ServerStatsSnapshot {
 	return m.stats.Snapshot()
 }
 
@@ -53,10 +56,10 @@ type ScyllaStore struct {
 	keyspace   string
 	instanceID string
 	mutex      sync.Mutex
-	stats      *ServerStats
+	stats      *models.ServerStats
 }
 
-func newScyllaStore(cfg Config) (*ScyllaStore, error) {
+func NewScyllaStore(cfg config.Config) (*ScyllaStore, error) {
 	consistency, err := parseConsistency(cfg.ScyllaConsistency)
 	if err != nil {
 		return nil, err
@@ -119,7 +122,7 @@ func newScyllaStore(cfg Config) (*ScyllaStore, error) {
 		session:    storeSession,
 		keyspace:   keyspace,
 		instanceID: "local-dev",
-		stats:      newServerStats(),
+		stats:      models.NewServerStats(),
 	}
 
 	if err := s.initSchema(); err != nil {
@@ -152,7 +155,7 @@ func (s *ScyllaStore) initSchema() error {
 	return nil
 }
 
-func (s *ScyllaStore) Record(rc RecentChange) {
+func (s *ScyllaStore) Record(rc models.RecentChange) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.stats.Record(rc)
@@ -164,7 +167,7 @@ func (s *ScyllaStore) SetError(err error) {
 	s.stats.SetError(err)
 }
 
-func (s *ScyllaStore) Snapshot() ServerStatsSnapshot {
+func (s *ScyllaStore) Snapshot() models.ServerStatsSnapshot {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return s.stats.Snapshot()
@@ -174,7 +177,7 @@ func (s *ScyllaStore) Flush() error {
 	// This is the main reason the interface needs a flush method, since we'll likely need to aggregate and batch datapoints for time-series workload
 	s.mutex.Lock()
 	snapshot := s.stats.Snapshot()
-	s.stats = newServerStats()
+	s.stats = models.NewServerStats()
 	s.mutex.Unlock()
 
 	// Return nil if there are no stats to be flushed

@@ -1,4 +1,4 @@
-package main
+package stream
 
 import (
 	"bufio"
@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"wikistream_project/internal/models"
+	"wikistream_project/internal/store"
 )
 
-func consumeEventStream(ctx context.Context, client *http.Client, url string, userAgent string, store Store) error {
+func ConsumeEventStream(ctx context.Context, client *http.Client, url string, userAgent string, store store.Store) error {
 	// Set up tracking id and sensible limits to avoid hammering the API
 	var lastEventID string
 	backoff := time.Second
@@ -82,7 +84,7 @@ func consumeEventStream(ctx context.Context, client *http.Client, url string, us
 					payload := strings.Join(lines, "\n")
 					log.Printf("Incoming message: %s", payload)
 
-					var rc RecentChange
+					var rc models.RecentChange
 					if err := json.Unmarshal([]byte(payload), &rc); err != nil {
 						store.SetError(err)
 						log.Printf("json decode error: %v", err)

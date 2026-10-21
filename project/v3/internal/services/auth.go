@@ -1,4 +1,4 @@
-package main
+package services
 
 import (
 	"crypto/hmac"
@@ -15,7 +15,7 @@ type AuthService struct {
 	users  map[string]string
 }
 
-func newAuthService(secret string, users map[string]string) *AuthService {
+func NewAuthService(secret string, users map[string]string) *AuthService {
 	if secret == "" {
 		secret = "oh-boy-this-is-not-ideal"
 	}
@@ -36,7 +36,7 @@ func (a *AuthService) CheckPassword(username string, password string) bool {
 	return expected == password
 }
 
-func (a *AuthService) issueToken(username string) (string, error) {
+func (a *AuthService) IssueToken(username string) (string, error) {
 	if username == "" {
 		return "", errors.New("username required")
 	}

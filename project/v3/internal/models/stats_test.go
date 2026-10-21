@@ -1,9 +1,11 @@
-package main
+package models
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestServerStatsRecordAndSnapshot(t *testing.T) {
-	stats := newServerStats()
+	stats := NewServerStats()
 	stats.Record(RecentChange{User: "G-Diddy", Bot: false, ServerURL: "https://en.wikipedia.org"})
 	stats.Record(RecentChange{User: "Thelonious", Bot: true, ServerURL: "https://en.wikipedia.org"})
 	stats.Record(RecentChange{User: "Thelonious", Bot: false, ServerURL: "https://commons.wikipedia.org"})

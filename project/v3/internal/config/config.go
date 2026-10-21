@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -26,7 +26,7 @@ type Config struct {
 	ScyllaTimeout     time.Duration
 }
 
-func loadConfig() Config {
+func LoadConfig() Config {
 	return Config{
 		HTTPAddr:    getEnv("HTTP_ADDR", ":7000"),
 		StreamURL:   getEnv("STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange"),

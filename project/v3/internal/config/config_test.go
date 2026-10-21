@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"os"
@@ -33,7 +33,7 @@ func TestLoadConfigUsesDefaultsWhenMissing(t *testing.T) {
 	_ = os.Unsetenv("HTTP_ADDR")
 	_ = os.Unsetenv("STORAGE_MODE")
 
-	cfg := loadConfig()
+	cfg := LoadConfig()
 	if cfg.HTTPAddr == "" {
 		t.Fatal("expected HTTP_ADDR to be set with default value when left blank")
 	}
