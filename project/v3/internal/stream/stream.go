@@ -13,7 +13,7 @@ import (
 	"wikistream_project/internal/store"
 )
 
-func consumeEventStream(ctx context.Context, client *http.Client, url string, userAgent string, store store.Store) error {
+func ConsumeEventStream(ctx context.Context, client *http.Client, url string, userAgent string, store store.Store) error {
 	// Set up tracking id and sensible limits to avoid hammering the API
 	var lastEventID string
 	backoff := time.Second

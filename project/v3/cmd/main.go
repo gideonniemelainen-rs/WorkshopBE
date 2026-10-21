@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 	"wikistream_project/internal/config"
+	"wikistream_project/internal/stream"
 )
 
 func main() {
@@ -30,7 +31,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		if err := consumeEventStream(ctx, &http.Client{Timeout: 0}, cfg.StreamURL, cfg.UserAgent, app.store); err != nil && !errors.Is(err, context.Canceled) {
+		if err := stream.ConsumeEventStream(ctx, &http.Client{Timeout: 0}, cfg.StreamURL, cfg.UserAgent, app.store); err != nil && !errors.Is(err, context.Canceled) {
 			log.Printf("stream consumer error: %v", err)
 		}
 	}()
