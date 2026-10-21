@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// Load configuration on startup
-	cfg := loadConfig()
+	cfg := config.loadConfig()
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("invalid config: %v", err)
 	}

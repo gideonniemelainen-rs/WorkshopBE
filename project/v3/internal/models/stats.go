@@ -47,7 +47,7 @@ type StatsBucket struct {
 }
 
 // A ton of helpers for the /stats endpoint
-func newServerStats() *ServerStats {
+func NewServerStats() *ServerStats {
 	return &ServerStats{
 		UniqueUsers: make(map[string]struct{}),
 		ByServerURL: make(map[string]uint64),

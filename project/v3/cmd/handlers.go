@@ -8,31 +8,34 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"wikistream_project/internal/config"
+	"wikistream_project/internal/services"
+	"wikistream_project/internal/store"
 )
 
 type App struct {
-	cfg   Config
-	auth  *AuthService
-	store Store
+	cfg   config.Config
+	auth  *services.AuthService
+	store store.Store
 }
 
 // Small handler to run on it
-func newApp(cfg Config) (*App, error) {
+func newApp(cfg config.Config) (*App, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
 	// Check for storage config on startup now
-	var store Store
+	var newStore store.Store
 	switch cfg.StorageMode {
 	case "memory":
-		store = newMemoryStore()
+		newStore = store.NewMemoryStore()
 	case "scylla":
-		scyllaStore, err := newScyllaStore(cfg)
+		scyllaStore, err := store.NewScyllaStore(cfg)
 		if err != nil {
 			return nil, err
 		}
-		store = scyllaStore
+		newStore = scyllaStore
 	default:
 		return nil, fmt.Errorf("unsupported storage mode: %s", cfg.StorageMode)
 	}
@@ -43,8 +46,8 @@ func newApp(cfg Config) (*App, error) {
 
 	return &App{
 		cfg:   cfg,
-		auth:  newAuthService(cfg.JWTSecret, users),
-		store: store,
+		auth:  services.NewAuthService(cfg.JWTSecret, users),
+		store: newStore,
 	}, nil
 }
 
@@ -105,7 +108,7 @@ func (a *App) router() http.Handler {
 			return
 		}
 
-		token, err := a.auth.issueToken(required.Username)
+		token, err := a.auth.IssueToken(required.Username)
 		if err != nil {
 			http.Error(w, "could not issue token", http.StatusInternalServerError)
 			return

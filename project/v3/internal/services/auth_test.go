@@ -5,7 +5,7 @@ import (
 )
 
 func TestAuthServiceCheckPassword(t *testing.T) {
-	a := newAuthService("test-secret", map[string]string{"admin": "password123"})
+	a := NewAuthService("test-secret", map[string]string{"admin": "password123"})
 
 	if !a.CheckPassword("admin", "password123") {
 		t.Fatalf("expected password check to succeed")
@@ -19,9 +19,9 @@ func TestAuthServiceCheckPassword(t *testing.T) {
 }
 
 func TestAuthServiceIssueAndValidateToken(t *testing.T) {
-	auth := newAuthService("test-secret", nil)
+	auth := NewAuthService("test-secret", nil)
 
-	token, err := auth.issueToken("admin")
+	token, err := auth.IssueToken("admin")
 	if err != nil {
 		t.Fatalf("issue token returned error: %v", err)
 	}
@@ -36,9 +36,9 @@ func TestAuthServiceIssueAndValidateToken(t *testing.T) {
 }
 
 func TestAuthServiceValidateTokenRejectsTamperedToken(t *testing.T) {
-	auth := newAuthService("test-secret", nil)
+	auth := NewAuthService("test-secret", nil)
 
-	token, err := auth.issueToken("admin")
+	token, err := auth.IssueToken("admin")
 	if err != nil {
 		t.Fatalf("issueToken returned error: %v", err)
 	}
