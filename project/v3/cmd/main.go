@@ -9,11 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	"wikistream_project/internal/config"
 )
 
 func main() {
 	// Load configuration on startup
-	cfg := config.loadConfig()
+	cfg := config.LoadConfig()
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("invalid config: %v", err)
 	}
