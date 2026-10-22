@@ -1,58 +1,36 @@
-package main
+package api
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
-	"time"
 	"wikistream_project/internal/config"
+	"wikistream_project/internal/models"
 	"wikistream_project/internal/services"
-	"wikistream_project/internal/store"
 )
 
-type App struct {
-	cfg   config.Config
+type Server struct {
+	cfg   config.Consumer
 	auth  *services.AuthService
-	store store.Store
+	stats *models.ServerStats
 }
 
 // Small handler to run on it
-func newApp(cfg config.Config) (*App, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-
-	// Check for storage config on startup now
-	var newStore store.Store
-	switch cfg.StorageMode {
-	case "memory":
-		newStore = store.NewMemoryStore()
-	case "scylla":
-		scyllaStore, err := store.NewScyllaStore(cfg)
-		if err != nil {
-			return nil, err
-		}
-		newStore = scyllaStore
-	default:
-		return nil, fmt.Errorf("unsupported storage mode: %s", cfg.StorageMode)
-	}
-
+func NewServer(cfg config.Consumer, stats *models.ServerStats) *Server {
 	users := map[string]string{
 		cfg.DefaultUser: cfg.DefaultPass,
 	}
 
-	return &App{
+	return &Server{
 		cfg:   cfg,
 		auth:  services.NewAuthService(cfg.JWTSecret, users),
-		store: newStore,
-	}, nil
+		stats: stats,
+	}
 }
 
-// build the actual app router, to borrow some terminology from Next
-func (a *App) router() http.Handler {
+// build the server
+func (s *Server) Handler() http.Handler {
 	// This is apparently a much better way to handle serving an app, compared to using the default mux. Should make testing easier too, based on what I've read?
 	mux := http.NewServeMux()
 
@@ -68,13 +46,13 @@ func (a *App) router() http.Handler {
 	})
 
 	// Stats endpoint, a bit simplified from previous
-	mux.HandleFunc("/stats", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/stats", s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		snapshot := a.store.Snapshot()
+		snapshot := s.stats.Snapshot()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(snapshot)
@@ -103,12 +81,12 @@ func (a *App) router() http.Handler {
 			return
 		}
 
-		if !a.auth.CheckPassword(required.Username, required.Password) {
+		if !s.auth.CheckPassword(required.Username, required.Password) {
 			http.Error(w, "invalid username or password", http.StatusUnauthorized)
 			return
 		}
 
-		token, err := a.auth.IssueToken(required.Username)
+		token, err := s.auth.IssueToken(required.Username)
 		if err != nil {
 			http.Error(w, "could not issue token", http.StatusInternalServerError)
 			return
@@ -126,10 +104,10 @@ func (a *App) router() http.Handler {
 }
 
 // Middleware for auth layer as per spec
-func (a *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Authorization headerL ", r.Header.Get("Authorization"))
-		if !a.cfg.AuthEnabled {
+		if !s.cfg.AuthEnabled {
 			next(w, r)
 			return
 		}
@@ -149,7 +127,7 @@ func (a *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		_, ok := a.auth.ValidateToken(parts[1])
+		_, ok := s.auth.ValidateToken(parts[1])
 		if !ok {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="wikistream"`)
 			http.Error(w, "authorization required", http.StatusUnauthorized)
@@ -158,23 +136,5 @@ func (a *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		// TODO cleanup? Might be worth spinning up a tiny rejectAuth helper to DRY this out^^
 
 		next(w, r)
-	}
-}
-
-// Start flush loop to support time series data
-func (a *App) startFlushLoop(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			_ = a.store.Flush()
-			return
-		case <-ticker.C:
-			if err := a.store.Flush(); err != nil {
-				log.Printf("flush error: %v", err)
-			}
-		}
 	}
 }

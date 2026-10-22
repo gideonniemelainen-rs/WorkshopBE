@@ -1,54 +1,18 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"wikistream_project/internal/aggregate"
 	"wikistream_project/internal/config"
 	"wikistream_project/internal/models"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
-
-// Shared Interface between in-memory and scylla stores. Due to the use case of supporting eventual time-series reporting, the actual implementations will look quite different
-type Store interface {
-	Record(models.RecentChange)
-	SetError(error)
-	Snapshot() models.ServerStatsSnapshot
-	Flush() error
-	Close() error
-}
-
-// In-Memory Store setup
-type MemoryStore struct {
-	stats *models.ServerStats
-}
-
-func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{stats: models.NewServerStats()}
-}
-
-func (m *MemoryStore) Record(rc models.RecentChange) {
-	m.stats.Record(rc)
-}
-
-func (m *MemoryStore) SetError(err error) {
-	m.stats.SetError(err)
-}
-
-func (m *MemoryStore) Snapshot() models.ServerStatsSnapshot {
-	return m.stats.Snapshot()
-}
-
-func (m *MemoryStore) Flush() error {
-	return nil
-}
-
-func (m *MemoryStore) Close() error {
-	return nil
-}
 
 // Scylla Store setup
 type ScyllaStore struct {
@@ -59,78 +23,63 @@ type ScyllaStore struct {
 	stats      *models.ServerStats
 }
 
-func NewScyllaStore(cfg config.Config) (*ScyllaStore, error) {
+const createStatsBatchesTable = `
+	CREATE TABLE IF NOT EXISTS server_stats_batches (
+		metric_name text,
+		bucket_start text,
+		partition int,
+		first_offset bigint,
+		last_offset bigint,
+		processed bigint,
+		unique_users bigint,
+		bot_count bigint,
+		human_count bigint,
+		by_server_url map<text, bigint>,
+		PRIMARY KEY ((metric_name, bucket_start), partition, first_offset)
+	)`
+
+const insertBatchRecord = `
+INSERT INTO server_stats_batches (
+	metric_name, bucket_start, partition, first_offset, last_offset,
+	processed, unique_users, bot_count, human_count, by_server_url
+) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+func NewScyllaStore(cfg config.Consumer) (*ScyllaStore, error) {
 	consistency, err := parseConsistency(cfg.ScyllaConsistency)
 	if err != nil {
 		return nil, err
 	}
 
 	hosts := normalizeHosts(cfg.ScyllaHosts)
+	keyspace := sanitizeKeyspace(cfg.ScyllaKeyspace)
 
-	// Set up scylla bootstrap cluster to configure keyspace if necessary
-	bootstrap := gocql.NewCluster(hosts...)
-	bootstrap.Timeout = cfg.ScyllaTimeout
-	bootstrap.ConnectTimeout = cfg.ScyllaTimeout
-	bootstrap.Consistency = consistency
-	bootstrap.DisableInitialHostLookup = true
-
-	if cfg.ScyllaUsername != "" {
-		bootstrap.Authenticator = gocql.PasswordAuthenticator{
-			Username: cfg.ScyllaUsername,
-			Password: cfg.ScyllaPassword,
-		}
-	}
-
+	bootstrap := configureNewCluster(hosts, "", cfg, consistency)
 	bootstrapSession, err := bootstrap.CreateSession()
 	if err != nil {
-		return nil, fmt.Errorf("create store session: %w", err)
+		return nil, fmt.Errorf("create bootstrap session: %w", err)
 	}
-	defer bootstrapSession.Close()
 
-	// check if keyspace exists and create if not
-	keyspace := sanitizeKeyspace(cfg.ScyllaKeyspace)
-	createKeyspaceQuery := fmt.Sprintf(
+	createKeyspace := fmt.Sprintf(
 		"CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = {'class': 'NetworkTopologyStrategy', 'datacenter1': 1}",
 		keyspace,
 	)
-
-	if err := bootstrapSession.Query(createKeyspaceQuery).Exec(); err != nil {
-		return nil, fmt.Errorf("create keyspace %s: %w", keyspace, err)
-	}
-
-	// Once we've confirmed that keyspace exists, spin up actual cluster
-	store := gocql.NewCluster(hosts...)
-	store.Keyspace = keyspace
-	store.Timeout = cfg.ScyllaTimeout
-	store.ConnectTimeout = cfg.ScyllaTimeout
-	store.Consistency = consistency
-	store.DisableInitialHostLookup = true
-
-	if cfg.ScyllaUsername != "" {
-		store.Authenticator = gocql.PasswordAuthenticator{
-			Username: cfg.ScyllaUsername,
-			Password: cfg.ScyllaPassword,
-		}
-	}
-
-	storeSession, err := store.CreateSession()
+	err = bootstrapSession.Query(createKeyspace).Exec()
+	bootstrapSession.Close()
 	if err != nil {
-		return nil, fmt.Errorf("create session error: %w", err)
+		return nil, fmt.Errorf("create keyspace: %s: %w", keyspace, err)
 	}
 
-	s := &ScyllaStore{
-		session:    storeSession,
-		keyspace:   keyspace,
-		instanceID: "local-dev",
-		stats:      models.NewServerStats(),
+	session, err := configureNewCluster(hosts, keyspace, cfg, consistency).CreateSession()
+	if err != nil {
+		return nil, fmt.Errorf("create session %w", err)
 	}
 
-	if err := s.initSchema(); err != nil {
-		storeSession.Close()
-		return nil, err
+	if err := session.Query(createStatsBatchesTable).Exec(); err != nil {
+		session.Close()
+		return nil, fmt.Errorf("create server_stats_batches table: %w", err)
 	}
 
-	return s, nil
+	return &ScyllaStore{session: session, keyspace: keyspace}, nil
 }
 
 func (s *ScyllaStore) initSchema() error {
@@ -224,11 +173,50 @@ func (s *ScyllaStore) Flush() error {
 	return nil
 }
 
+func (s *ScyllaStore) WriteBatchRecord(ctx context.Context, rows []aggregate.Row) error {
+	for _, r := range rows {
+		err := s.session.Query(
+			insertBatchRecord,
+			r.MetricName,
+			r.BucketStart,
+			r.Partition,
+			r.FirstOffset,
+			r.LastOffset,
+			r.Processed,
+			r.UniqueUsers,
+			r.BotCount,
+			r.HumanCount,
+			r.ByServerURL,
+		).ExecContext(ctx)
+		if err != nil {
+			return fmt.Errorf("insert batch partion=%d first_offset=%d: %w", r.Partition, r.FirstOffset, err)
+		}
+	}
+	return nil
+}
+
 func (s *ScyllaStore) Close() error {
 	if s.session != nil {
 		s.session.Close()
 	}
 	return nil
+}
+
+func configureNewCluster(hosts []string, keyspace string, cfg config.Consumer, consistency gocql.Consistency) *gocql.ClusterConfig {
+	cluster := gocql.NewCluster(hosts...)
+	cluster.Keyspace = keyspace
+	cluster.Timeout = cfg.ScyllaTimeout
+	cluster.ConnectTimeout = cfg.ScyllaTimeout
+	cluster.Consistency = consistency
+	cluster.DisableInitialHostLookup = true
+	if cfg.ScyllaUsername != "" {
+		cluster.Authenticator = gocql.PasswordAuthenticator{
+			Username: cfg.ScyllaUsername,
+			Password: cfg.ScyllaPassword,
+		}
+	}
+
+	return cluster
 }
 
 // Helpers for Scylla Store
