@@ -8,10 +8,18 @@ import (
 // Using `json` decorators to help serialize values from payload
 // Interesting, no space allowed between json: and then the quoted value
 type RecentChange struct {
-	Bot       bool   `json:"bot"`
-	User      string `json:"user"`
-	ServerURL string `json:"server_url"`
-	Timestamp int64  `json:"timestamp"`
+	Bot        bool   `json:"bot"`
+	User       string `json:"user"`
+	ServerURL  string `json:"server_url"`
+	Timestamp  int64  `json:"timestamp"`
+	ID         int64  `json:"id"`
+	Type       string `json:"type"`
+	Namespace  int32  `json:"namespace"`
+	Title      string `json:"title"`
+	Minor      bool   `json:"minor"`
+	ServerName string `json:"server_name"`
+	Wiki       string `json:"wiki"`
+	Comment    string `json:"comment"`
 }
 
 type ServerStats struct {

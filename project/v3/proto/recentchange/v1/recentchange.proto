@@ -1,8 +1,8 @@
-syntax = "proto3"
+syntax = "proto3";
 
-package recentchange.v1
+package recentchange.v1;
 
-option go_package = "wikistream_project/internal/gen/recentchange/v1;recentchangev1"
+option go_package = "wikistream_project/internal/gen/recentchange/v1;recentchangev1";
 
 message RecentChange {
     int64 id = 1;
