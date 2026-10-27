@@ -3,12 +3,14 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
 	"time"
-	"wikistream_project/internal/config"
 	"wikistream_project/internal/aggregate"
+	"wikistream_project/internal/config"
+	"wikistream_project/internal/models"
 )
 
 func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
@@ -49,7 +51,7 @@ func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
 		metric,
 		bucket,
 		int32(0),
-		int64(10)
+		int64(10),
 	).Scan(&processed, &botCount, &humanCount)
 	if err != nil {
 		t.Fatalf("query persisted row returned error: %v", err)
