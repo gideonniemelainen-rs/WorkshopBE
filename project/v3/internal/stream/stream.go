@@ -3,21 +3,23 @@ package stream
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strings"
 	"time"
-	"wikistream_project/internal/models"
-	"wikistream_project/internal/store"
 )
 
-func ConsumeEventStream(ctx context.Context, client *http.Client, url string, userAgent string, store store.Store) error {
+const (
+	initialBackoff = time.Second
+	maxBackoff     = 30 * time.Second
+	maxLineBytes   = 2 * 1024 * 1024
+)
+
+func ConsumeEventStream(ctx context.Context, client *http.Client, url string, userAgent string, onEvent func(payload []byte)) error {
 	// Set up tracking id and sensible limits to avoid hammering the API
 	var lastEventID string
-	backoff := time.Second
-	maxBackoff := time.Second * 30
+	backoff := initialBackoff
 
 	for {
 		// check if context is in error or not
@@ -45,11 +47,10 @@ func ConsumeEventStream(ctx context.Context, client *http.Client, url string, us
 		resp, err := client.Do(req)
 		// Handle generic error
 		if err != nil {
-			store.SetError(err)
-			log.Printf("Connect error: %v (retrying in %s)", err, backoff)
-			// sleep thread (just like in the course!)
-			time.Sleep(backoff)
-			// Expontential backoff
+			if !sleep(ctx, backoff, "connect error", err) {
+				return ctx.Err()
+			}
+			// Exponential backoff
 			backoff = minDuration(backoff*2, maxBackoff)
 			continue
 		}
@@ -57,76 +58,78 @@ func ConsumeEventStream(ctx context.Context, client *http.Client, url string, us
 		// Handle not okay response
 		if resp.StatusCode != http.StatusOK {
 			_ = resp.Body.Close()
-			err = errors.New(resp.Status)
-			store.SetError(err)
-			log.Printf("Bad status: %s (retrying in %s)", err, backoff)
-			time.Sleep(backoff)
+			if !sleep(ctx, backoff, "connect error", errors.New(resp.Status)) {
+				return ctx.Err()
+			}
+			// Exponential backoff
 			backoff = minDuration(backoff*2, maxBackoff)
 			continue
 		}
 
 		// reset backoff if everything okay
-		backoff = time.Second
-		store.SetError(nil)
+		backoff = initialBackoff
 
-		// create a scanner to read response body
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
-
-		var lines []string
-
-		// iterate through scanner and body contents
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			if line == "" {
-				if len(lines) > 0 {
-					payload := strings.Join(lines, "\n")
-					log.Printf("Incoming message: %s", payload)
-
-					var rc models.RecentChange
-					if err := json.Unmarshal([]byte(payload), &rc); err != nil {
-						store.SetError(err)
-						log.Printf("json decode error: %v", err)
-					} else {
-						store.Record(rc)
-					}
-					lines = lines[:0]
-				}
-				continue
-			}
-
-			if strings.HasPrefix(line, ":") {
-				continue
-			}
-
-			if strings.HasPrefix(line, "id:") {
-				lastEventID = strings.TrimSpace(line[len("id:"):])
-				continue
-			}
-
-			if strings.HasPrefix(line, "data:") {
-				data := strings.TrimSpace(line[len("data:"):])
-				lines = append(lines, data)
-				continue
-			}
-
-		}
-
+		lastEventID = readEvents(resp, lastEventID, onEvent)
 		_ = resp.Body.Close()
 
-		if ctx.Err() != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		if !sleep(ctx, backoff, "stream closed", nil) {
 			return ctx.Err()
 		}
-
-		if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("stream read error: %v (reconnecting)", err)
-		} else {
-			log.Printf("stream closed (reconnecting)")
-		}
-
-		time.Sleep(backoff)
 		backoff = minDuration(backoff*2, maxBackoff)
+	}
+}
+
+func readEvents(resp *http.Response, lastEventID string, onEvent func(payload []byte)) string {
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*10124), maxLineBytes)
+
+	var data []string
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		switch {
+		case line == "":
+			if len(data) > 0 {
+				onEvent([]byte(strings.Join(data, "\n")))
+				data = data[:0]
+			}
+		case strings.HasPrefix(line, ":"):
+			continue
+		case strings.HasPrefix(line, "id:"):
+			lastEventID = strings.TrimSpace(line[len("id:"):])
+			continue
+		case strings.HasPrefix(line, "data:"):
+			data = append(data, strings.TrimSpace(line[len("data:"):]))
+			continue
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("stream read error: %v", err)
+	}
+
+	return lastEventID
+}
+
+func sleep(ctx context.Context, d time.Duration, reason string, err error) bool {
+	if err != nil {
+		log.Printf("%s: %v (retrying in %s)", reason, err, d)
+	} else {
+		log.Printf("%s (reconnecting in %s)", reason, d)
+	}
+
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

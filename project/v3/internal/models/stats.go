@@ -2,7 +2,6 @@ package models
 
 import (
 	"sync"
-	"time"
 )
 
 // Struct for reading in data from messages retrieved from stream endpoint
@@ -12,6 +11,7 @@ type RecentChange struct {
 	Bot       bool   `json:"bot"`
 	User      string `json:"user"`
 	ServerURL string `json:"server_url"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 type ServerStats struct {
@@ -32,18 +32,6 @@ type ServerStatsSnapshot struct {
 	HumanCount      uint64            `json:"humanCount"`
 	ByServerURL     map[string]uint64 `json:"byServerURL"`
 	LastError       string            `json:"lastError"`
-}
-
-// Struct for supporting Time series data in Scylla db eventually
-type StatsBucket struct {
-	BucketStart time.Time
-	MetricName  string
-	InstanceID  string
-	Processed   uint64
-	UniqueUsers uint64
-	BotCount    uint64
-	HumanCount  uint64
-	ServerURL   string
 }
 
 // A ton of helpers for the /stats endpoint
@@ -85,6 +73,8 @@ func (s *ServerStats) SetError(err error) {
 		s.LastError = ""
 		return
 	}
+	// I kinda blanked on this beforehand, but I was never actually setting the error value. sigh
+	s.LastError = err.Error()
 }
 
 func (s *ServerStats) Snapshot() ServerStatsSnapshot {

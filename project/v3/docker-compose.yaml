@@ -1,6 +1,46 @@
-version: "3"
-
 services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    container_name: wikistream-redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+    ports:
+      - "19092:9092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --exit-when-healthy || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - wikistream-net
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    container_name: wikistream-redpanda-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        rpk topic describe wikistream.recentchange -X brokers=redpanda:9092 >/dev/null 2>&1 ||
+        rpk topic create wikistream.recentchange -p 6 -r 1 -X brokers=redpanda:9092
+    restart: "no"
+    networks:
+      - wikistream-net
   scylla:
     image: scylladb/scylla
     container_name: wikistream-scylla
@@ -11,7 +51,7 @@ services:
     volumes:
       - scylla-data:/var/lib/scylla
     healthcheck:
-      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' 127.0.0.1 9042 || exit 1"]
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 20
@@ -19,13 +59,30 @@ services:
     restart: unless-stopped
     networks:
       - wikistream-net
-
-  app:
+  producer:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: wikistream-app
+      args:
+        SERVICE: producer
+    container_name: wikistream-producer
     depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    restart: unless-stopped
+    stop_grace_period: 30s
+    networks:
+      - wikistream-net
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wikistream-consumer
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
       scylla:
         condition: service_healthy
     ports:
@@ -33,10 +90,12 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    stop_grace_period: 30s
     networks:
       - wikistream-net
 
 volumes:
+  redpanda-data:
   scylla-data:
 
 networks:
