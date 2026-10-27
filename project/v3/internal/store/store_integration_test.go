@@ -46,7 +46,7 @@ func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
 
 	bucket := aggregate.Bucket(ts)
 	var processed, botCount, humanCount int64
-	err := store.session.Query(
+	err = store.session.Query(
 		`SELECT processed, bot_count, human_count FROM server_stats_batches WHERE metric_name = ? AND bucket_start = ? AND partion = ? AND first_offset = ?`,
 		metric,
 		bucket,
