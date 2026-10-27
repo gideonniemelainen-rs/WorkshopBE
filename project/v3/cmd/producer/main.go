@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"wikistream_project/internal/codec"
 	"wikistream_project/internal/config"
 	"wikistream_project/internal/models"
 	"wikistream_project/internal/stream"
@@ -35,6 +36,13 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Add in new support looking up schema and building codec for protobuf
+	schemaID, err := codec.LookupSchemaID(ctx, cfg.SchemaRegistryURL, config.AppendValueToSubject(cfg.Topic))
+	if err != nil {
+		return fmt.Errorf("resolve schema: %w", err)
+	}
+	encoder := codec.New(schemaID)
+
 	cl, err := kgo.NewClient(
 		kgo.SeedBrokers(cfg.Brokers...),
 		kgo.DefaultProduceTopic(cfg.Topic),
@@ -56,9 +64,14 @@ func run() error {
 			return
 		}
 
+		value, err := encoder.EncodeEvent(rc)
+		if err != nil {
+			log.Printf("skipping event that could not be encoded: %v", err)
+		}
+
 		cl.Produce(context.Background(), &kgo.Record{
 			Key:   []byte(rc.ServerURL),
-			Value: payload,
+			Value: value,
 		}, func(_ *kgo.Record, err error) {
 			if err != nil {
 				failed.Add(1)

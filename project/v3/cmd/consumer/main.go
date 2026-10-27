@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 	"wikistream_project/internal/api"
+	"wikistream_project/internal/codec"
 	"wikistream_project/internal/config"
 	"wikistream_project/internal/consumer"
 	"wikistream_project/internal/models"
@@ -32,6 +33,12 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	schemaID, err := codec.LookupSchemaID(ctx, cfg.SchemaRegistryURL, config.AppendValueToSubject(cfg.Topic))
+	if err != nil {
+		return fmt.Errorf("resolve schema: %w", err)
+	}
+	decoder := codec.New(schemaID)
 
 	sink, err := store.NewScyllaStore(cfg)
 	if err != nil {
@@ -65,7 +72,7 @@ func run() error {
 		}
 	}()
 
-	runError := consumer.Run(ctx, cl, sink, stats, cfg.BatchMaxRecords)
+	runError := consumer.Run(ctx, cl, sink, stats, cfg.BatchMaxRecords, decoder.DecodeEvent)
 
 	stop()
 

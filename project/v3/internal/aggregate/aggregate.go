@@ -6,7 +6,8 @@ import (
 	"wikistream_project/internal/models"
 )
 
-const MetricName = "recentchange"
+// appending _pb so there are no conflicts between this and old scylla rows
+const MetricName = "recentchange_pb"
 
 const UnknownBucket = "unknown"
 
