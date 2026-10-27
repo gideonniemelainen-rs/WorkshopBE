@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 	"wikistream_project/internal/aggregate"
+	"wikistream_project/internal/codec"
 	"wikistream_project/internal/config"
 	"wikistream_project/internal/models"
 
@@ -75,6 +76,9 @@ func produce(t *testing.T, addrs []string, topic string, values ...string) {
 		t.Fatalf("produce: %v", err)
 	}
 }
+
+// Set up test codec for new tests
+var testCodec = codec.New(1)
 
 func event(t *testing.T, ts int64, user string, bot bool) string {
 	t.Helper()
@@ -145,7 +149,7 @@ func TestRunWritesThenCommitsBatchRecord(t *testing.T) {
 	stats := models.NewServerStats()
 
 	done := make(chan error, 1)
-	go func() { done <- Run(ctx, cl, sink, stats, 10) }()
+	go func() { done <- Run(ctx, cl, sink, stats, 10, testCodec.DecodeEvent) }()
 
 	select {
 	case err := <-done:
@@ -186,7 +190,7 @@ func TestRunDoesNotCommitWhenWriteFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	err = Run(ctx, cl, sink, stats, 10)
+	err = Run(ctx, cl, sink, stats, 10, testCodec.DecodeEvent)
 	cl.Close()
 
 	if err == nil {
