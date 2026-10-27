@@ -3,19 +3,21 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
+	"wikistream_project/internal/config"
+	"wikistream_project/internal/aggregate"
 )
 
-func TestScyllaStoreInitAndFlushPersistsRow(t *testing.T) {
+func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
 	host := os.Getenv("SCYLLA_HOSTS")
 	if host == "" {
 		host = "127.0.0.1"
 	}
 
-	cfg := Config{
-		StorageMode:       "scylla",
+	cfg := config.Consumer{
 		ScyllaHosts:       []string{host},
 		ScyllaKeyspace:    "wikistream",
 		ScyllaConsistency: "LOCAL_QUORUM",
@@ -28,31 +30,37 @@ func TestScyllaStoreInitAndFlushPersistsRow(t *testing.T) {
 	}
 	defer store.Close()
 
-	store.Record(RecentChange{User: "G-Diddy", Bot: false, ServerURL: "https://en.wikipedia.org"})
-	store.Record(RecentChange{User: "Thelonious", Bot: true, ServerURL: "https://commons.wikipedia.org"})
-	store.SetError(nil)
-
-	if err := store.Flush(); err != nil {
-		t.Fatalf("flush returned error: %v", err)
+	metric := fmt.Sprintf("integration=%d", time.Now().UnixNano())
+	ts := time.Now().Unix()
+	events := []aggregate.Event{
+		{Partition: 0, Offset: 10, Change: models.RecentChange{User: "G-Diddy", Bot: false, ServerURL: "https://en.wikipedia.org"},
+		{Partition: 0, Offset: 11, Change: models.RecentChange{User: "Thelonious", Bot: true, ServerURL: "https://commons.wikipedia.org"}}
 	}
 
-	bucket := time.Now().UTC().Truncate(time.Minute).Format(time.RFC3339)
-	var processed int64
+	rows := aggregate.Build(metric, events)
+	if err := store.WriteBatchRecord(context.Background(), rows); err != nil {
+		t.Fatalf("WriteBatchRecord returned error: %v", err)
+	}
+
+	bucket := aggregate.Bucket(ts)
+	var processed, botCount, humanCount int64
 	iterator := store.session.Query(
-		`SELECT processed FROM server_stats_by_minute WHERE bucket_start = ? AND metric_name = ? AND instance_id = ? LIMIT 1`,
+		`Select processed, bot_count, human_count FROM server_stats_batches WHERE metric_name = ? AND bucket_start = ? AND partion = ? AND first_offset = ?`,
+		metric,
 		bucket,
-		"recentchange",
-		store.instanceID,
+		int32(0),
+		int64(10)
 	).Iter()
 
-	foundRecord := iterator.Scan(&processed)
+	foundRow := iterator.Scan(&processed. &botCount, &humanCount)
 	if err := iterator.Close(); err != nil {
 		t.Fatalf("query close returned error: %v", err)
 	}
-	if !foundRecord {
+	if !foundRow {
 		t.Fatalf("expected at least one persisted row returned for bucket %s", bucket)
 	}
-	if processed < 1 {
-		t.Fatalf("expected processed count > 0, got %d", processed)
+	if processed != 2 || botCount != 1 || humanCount != 1 {
+		t.Fatalf("persisted counts processed=%d bot=%d human=%d, expected 2/1/1", processed, botCount, humanCount)
 	}
+}
 }
