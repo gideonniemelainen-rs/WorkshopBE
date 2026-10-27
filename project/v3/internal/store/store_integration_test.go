@@ -34,7 +34,7 @@ func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
 	ts := time.Now().Unix()
 	events := []aggregate.Event{
 		{Partition: 0, Offset: 10, Change: models.RecentChange{User: "G-Diddy", Bot: false, ServerURL: "https://en.wikipedia.org", Timestamp: ts},
-		{Partition: 0, Offset: 11, Change: models.RecentChange{User: "Thelonious", Bot: true, ServerURL: "https://commons.wikipedia.org", Timestamp: ts}}
+		{Partition: 0, Offset: 11, Change: models.RecentChange{User: "Thelonious", Bot: true, ServerURL: "https://commons.wikipedia.org", Timestamp: ts}},
 	}
 
 	rows := aggregate.Build(metric, events)

@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -83,7 +82,7 @@ var testCodec = codec.New(1)
 func event(t *testing.T, ts int64, user string, bot bool) string {
 	t.Helper()
 
-	b, err := json.Marshal(models.RecentChange{
+	b, err := testCodec.EncodeEvent(models.RecentChange{
 		User:      user,
 		Bot:       bot,
 		ServerURL: "https://en.wikipedia.org",
