@@ -33,7 +33,7 @@ func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
 	metric := fmt.Sprintf("integration=%d", time.Now().UnixNano())
 	ts := time.Now().Unix()
 	events := []aggregate.Event{
-		{Partition: 0, Offset: 10, Change: models.RecentChange{User: "G-Diddy", Bot: false, ServerURL: "https://en.wikipedia.org", Timestamp: ts},
+		{Partition: 0, Offset: 10, Change: models.RecentChange{User: "G-Diddy", Bot: false, ServerURL: "https://en.wikipedia.org", Timestamp: ts}},
 		{Partition: 0, Offset: 11, Change: models.RecentChange{User: "Thelonious", Bot: true, ServerURL: "https://commons.wikipedia.org", Timestamp: ts}},
 	}
 
@@ -57,5 +57,4 @@ func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
 	if processed != 2 || botCount != 1 || humanCount != 1 {
 		t.Fatalf("persisted counts processed=%d bot=%d human=%d, expected 2/1/1", processed, botCount, humanCount)
 	}
-}
 }
