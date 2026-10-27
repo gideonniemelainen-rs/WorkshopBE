@@ -15,7 +15,7 @@ import (
 
 const (
 	writeAttempts = 5
-	writeBackoff  = 200 * time.Second
+	writeBackoff  = 200 * time.Millisecond
 )
 
 type Decoder func(value []byte) (models.RecentChange, error)
