@@ -1,0 +1,133 @@
+{
+    "uid": "wikistream-pipeline",
+    "title": "WikiStream Pipeline",
+    "tags": ["wikistream"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "editable": true,
+    "refresh": "10s",
+    "time": { "from": "now-1h", "to": "now"},
+    "templating": { "list": []},
+    "annotations": {"list": []},
+    "panels": [
+        {
+            "id": 1,
+            "type": "timeseries",
+            "title": "Producer throughput",
+            "description": "Events read from the wikimedia stream vs events acked by Redpanda",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+            "datasource": { "type": "prometheus", "uid": "prometheus"},
+            "fieldConfig": { "defaults": { "unit": "ops"}, "overrides": []},
+            "options": {
+                "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true},
+                "tooltip": { "mode": "multi", "sort": "none"}
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": { "type": "prometheus", "uid": "prometheus"},
+                    "expr": "rate(wikistream_producer_stream_events_consumed_total[1m])",
+                    "legendFormat": "consumed from stream"
+                },
+                {
+                    "refId": "B",
+                    "datasource": { "type": "prometheus", "uid": "prometheus"},
+                    "expr": "rate(wikistream_producer_events_persisted_total[1m])",
+                    "legendFormat": "persisted to Redpanda"
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "type": "timeseries",
+            "title": "Consumer throughput",
+            "description":"Events read from Redpanda vs. events processed after commit",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+            "datasource": { "type": "prometheus", "uid": "prometheus"},
+            "fieldConfig": {"defaults": { "unit": "ops"}, "overrides": []},
+            "options": {
+                "legend": { "displayMode": "list", "placement":"bottom", "showLegend": true},
+                "tooltip": { "mode": "multi", "sort": "none"}
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": { "type": "prometheus", "uid": "prometheus"},
+                    "expr": "rate(wikistream_consumer_redpanda_events_consumed_total[1m])",
+                    "legendFormat": "consumed from Redpanda"
+                },
+                {
+                    "refId": "B",
+                    "datasource": { "type": "prometheus", "uid": "prometheus"},
+                    "expr": "rate(wikistream_consumer_events_processed_total[1m])",
+                    "legendFormat": "processed"
+                }
+            ]
+        },
+        {
+            "id": 3,
+            "type": "timeseries",
+            "title": "Producer failures by stage",
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+            "datasource": { "type": "prometheus", "uid": "prometheus"},
+            "fieldConfig": { "defaults": { "unit": "ops"}, "overrides": []},
+            "options": {
+                "legend": { "displayMode": "list", "placement":"bottom", "showLegend": true},
+                "tooltip": { "mode": "multi", "sort": "none"}
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": { "type": "prometheus", "uid": "prometheus"},
+                    "expr": "sum by (stage) (rate(wikistream_producer_events_failed_total[1m]))",
+                    "legendFormat": "{{stage}}"
+                }
+            ]
+        },
+        {
+            "id": 4,
+            "type": "timeseries",
+            "title": "Consumer failures by stage",
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8},
+            "datasource": { "type": "prometheus", "uid": "prometheus"},
+            "fieldConfig": { "defaults": { "unit": "ops"}, "overrides": []},
+            "options": {
+                "legend": { "displayMode": "list", "placement":"bottom", "showLegend": true},
+                "tooltip": { "mode": "multi", "sort": "none"}
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": { "type": "prometheus", "uid": "prometheus"},
+                    "expr": "sum by (stage) (rate(wikistream_consumer_events_failed_total[1m]))",
+                    "legendFormat": "{{stage}}"
+                }
+            ]
+        },
+        {
+            "id": 5,
+            "type": "timeseries",
+            "title": "Consumer success ratio",
+            "description": "Share of consumed events that were processed successfully (5m window)",
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+            "datasource": { "type": "prometheus", "uid": "prometheus"},
+            "fieldConfig": {
+                "defaults": {"unit": "percentunit", "min": 0, "max": 1},
+                "overrides": []
+            },
+            "options": {
+                "legend": { "displayMode": "list", "placement":"bottom", "showLegend": true},
+                "tooltip": { "mode": "multi", "sort": "none"}
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "datasource": { "type": "prometheus", "uid": "prometheus"},
+                    "expr": "sum(rate(wikistream_consumer_events_processed_total[5m])) / sum(rate(wikistream_consumer_redpanda_events_consumed_total[5m]))",
+                    "legendFormat": "success ratio"
+                }
+            ]
+        }
+    ]
+}

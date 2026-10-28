@@ -149,7 +149,7 @@ services:
   grafana:
     image: grafana/grafana:13.3.0
     container_name: wikistream-grafana
-    envrionment:
+    environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     ports:
       - "3000:3000"
@@ -165,6 +165,8 @@ services:
 volumes:
   redpanda-data:
   scylla-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   wikistream-net:
