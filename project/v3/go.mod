@@ -6,6 +6,8 @@ require (
 	github.com/apache/cassandra-gocql-driver/v2 v2.1.2
 	github.com/twmb/franz-go v1.22.2
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20261022190701-123ec885bc97
+	github.com/twmb/franz-go/pkg/sr v1.8.0
+	google.golang.org/protobuf v1.36.12
 )
 
 require (

@@ -1,6 +1,6 @@
 services:
   redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.5
     container_name: wikistream-redpanda
     command:
       - redpanda
@@ -15,6 +15,7 @@ services:
       - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
     ports:
       - "19092:9092"
+      - "8081:8081"
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
@@ -28,7 +29,7 @@ services:
       - wikistream-net
 
   redpanda-init:
-    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.5
     container_name: wikistream-redpanda-init
     depends_on:
       redpanda:
@@ -36,11 +37,28 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        rpk topic describe wikistream.recentchange -X brokers=redpanda:9092 >/dev/null 2>&1 ||
-        rpk topic create wikistream.recentchange -p 6 -r 1 -X brokers=redpanda:9092
+        rpk topic create wikistream.recentchange -p 6 -r 1 --if-not-exists -X brokers=redpanda:9092 &&
+        rpk topic create wikistream.recentchange.proto -p 6 -r 1 --if-not-exists -c retention.ms=604800000 -c cleanup.policy=delete -c compression.type=zstd -X brokers=redpanda:9092
     restart: "no"
     networks:
       - wikistream-net
+  schema-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.5
+    container_name: wikistream-schema-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    volumes:
+      - ./proto/recentchange/v1/recentchange.proto:/schemas/recentchange.proto:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        rpk registry schema create wikistream.recentchange.proto-value --schema /schemas/recentchange.proto --type protobuf -X registry.hosts=redpanda:8081 &&
+        rpk registry compatibility-level set wikistream.recentchange.proto-value --level BACKWARD -X registry.hosts=redpanda:8081
+    restart: "no"
+    networks:
+      - wikistream-net
+
   scylla:
     image: scylladb/scylla
     container_name: wikistream-scylla
@@ -69,6 +87,8 @@ services:
     depends_on:
       redpanda-init:
         condition: service_completed_successfully
+      schema-init:
+        condition: service_completed_successfully
     env_file:
       - .env
     restart: unless-stopped
@@ -85,12 +105,31 @@ services:
         condition: service_completed_successfully
       scylla:
         condition: service_healthy
+      schema-init:
+        condition: service_completed_successfully
     ports:
       - "7000:7000"
     env_file:
       - .env
     restart: unless-stopped
     stop_grace_period: 30s
+    networks:
+      - wikistream-net
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v3.13.0
+    container_name: wikistream-console
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      schema-init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      SCHEMAREGISTRY_ENABLED: "true"
+      SCHEMAREGISTRY_URLS: http://redpanda:8081
+    restart: unless-stopped
     networks:
       - wikistream-net
 

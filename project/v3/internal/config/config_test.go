@@ -7,13 +7,14 @@ import (
 
 func buildValidConsumer() Consumer {
 	return Consumer{
-		Brokers:         []string{"localhost:9092"},
-		Topic:           "t",
-		Group:           "g",
-		BatchMaxRecords: 10,
-		ScyllaHosts:     []string{"localhost:9042"},
-		ScyllaKeyspace:  "ks",
-		AuthEnabled:     false,
+		Brokers:           []string{"localhost:9092"},
+		Topic:             "t",
+		Group:             "g",
+		BatchMaxRecords:   10,
+		ScyllaHosts:       []string{"localhost:9042"},
+		ScyllaKeyspace:    "ks",
+		AuthEnabled:       false,
+		SchemaRegistryURL: "http://redpanda:8081",
 	}
 }
 

@@ -82,28 +82,6 @@ func NewScyllaStore(cfg config.Consumer) (*ScyllaStore, error) {
 	return &ScyllaStore{session: session, keyspace: keyspace}, nil
 }
 
-func (s *ScyllaStore) initSchema() error {
-	const schema = `
-	CREATE TABLE IF NOT EXISTS server_stats_by_minute (
-		bucket_start text,
-		metric_name text,
-		instance_id text,
-		ts timestamp,
-		processed bigint,
-		unique_users bigint,
-		bot_count bigint,
-		human_count bigint,
-		by_server_url map<text, bigint>,
-		last_error text,
-		PRIMARY KEY ((bucket_start, metric_name, instance_id), ts)
-	)`
-
-	if err := s.session.Query(schema).Exec(); err != nil {
-		return fmt.Errorf("create server_stats_by_minute table error: %w", err)
-	}
-	return nil
-}
-
 func (s *ScyllaStore) Record(rc models.RecentChange) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

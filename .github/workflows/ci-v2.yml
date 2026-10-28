@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_DIR: project/v2/cmd
+  APP_DIR: project/v3
 
 jobs:
   # Linting and Vetting

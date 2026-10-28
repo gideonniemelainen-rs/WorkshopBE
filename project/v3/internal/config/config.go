@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -10,23 +11,25 @@ import (
 
 // Setting up event driven architecture producers and consumers
 type Producer struct {
-	Brokers      []string
-	Topic        string
-	StreamURL    string
-	UserAgent    string
-	FlushTimeout time.Duration
+	Brokers           []string
+	Topic             string
+	SchemaRegistryURL string
+	StreamURL         string
+	UserAgent         string
+	FlushTimeout      time.Duration
 }
 
 type Consumer struct {
-	Brokers         []string
-	Topic           string
-	Group           string
-	BatchMaxRecords int
-	HTTPAddr        string
-	JWTSecret       string
-	AuthEnabled     bool
-	DefaultUser     string
-	DefaultPass     string
+	Brokers           []string
+	Topic             string
+	SchemaRegistryURL string
+	Group             string
+	BatchMaxRecords   int
+	HTTPAddr          string
+	JWTSecret         string
+	AuthEnabled       bool
+	DefaultUser       string
+	DefaultPass       string
 
 	// Start of scylla implementation
 	ScyllaHosts       []string
@@ -39,21 +42,22 @@ type Consumer struct {
 
 func LoadProducer() Producer {
 	return Producer{
-		Brokers:      splitCSV(getEnv("REDPANDA_BROKERS", "127.0.0.1:9092")),
-		Topic:        getEnv("REDPANDA_TOPIC", "wikistream.recentchange"),
-		StreamURL:    getEnv("STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange"),
-		UserAgent:    getEnv("USER_AGENT", "wikistream/0.1"),
-		FlushTimeout: getDuration("FLUSH_TIMEOUT", 10*time.Second),
+		Brokers:           splitCSV(getEnv("REDPANDA_BROKERS", "127.0.0.1:9092")),
+		Topic:             getEnv("REDPANDA_TOPIC", "wikistream.recentchange"),
+		SchemaRegistryURL: getEnv("SCHEMA_REGISTRY_URL", "http://127.0.0.1:8081"),
+		StreamURL:         getEnv("STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange"),
+		UserAgent:         getEnv("USER_AGENT", "wikistream/0.1"),
+		FlushTimeout:      getDuration("FLUSH_TIMEOUT", 10*time.Second),
 	}
 }
 
 func LoadConsumer() Consumer {
 	return Consumer{
-
-		Brokers:         splitCSV(getEnv("REDPANDA_BROKERS", "127.0.0.1:9092")),
-		Topic:           getEnv("REDPANDA_TOPIC", "wikistream.recentchange"),
-		Group:           getEnv("CONSUMER_GROUP", "wikistream-consumer"),
-		BatchMaxRecords: getEnvInt("BATCH_MAX_RECORDS", 500),
+		Brokers:           splitCSV(getEnv("REDPANDA_BROKERS", "127.0.0.1:9092")),
+		Topic:             getEnv("REDPANDA_TOPIC", "wikistream.recentchange"),
+		SchemaRegistryURL: getEnv("SCHEMA_REGISTRY_URL", "http://127.0.0.1:8081"),
+		Group:             getEnv("CONSUMER_GROUP", "wikistream-consumer"),
+		BatchMaxRecords:   getEnvInt("BATCH_MAX_RECORDS", 500),
 
 		HTTPAddr:    getEnv("HTTP_ADDR", ":7000"),
 		JWTSecret:   getEnv("JWT_SECRET", "dear-god-no"),
@@ -70,6 +74,28 @@ func LoadConsumer() Consumer {
 	}
 }
 
+// Helper for pulling out schema registry subject
+func AppendValueToSubject(topic string) string {
+	return topic + "-value"
+}
+
+func validateHTTPUrl(name string, raw string) error {
+	if raw == "" {
+		return fmt.Errorf("%s is required", name)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("%s is not a valid URL: %w", name, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("%s must use http or https protocol", name)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("%s must include a host", name)
+	}
+	return nil
+}
+
 func (p Producer) Validate() error {
 	if len(p.Brokers) == 0 {
 		return fmt.Errorf("REDPANDA_BROKERS is required")
@@ -79,6 +105,9 @@ func (p Producer) Validate() error {
 	}
 	if p.StreamURL == "" {
 		return fmt.Errorf("STREAM_URL is required")
+	}
+	if err := validateHTTPUrl("SCHEMA_REGISTRY_URL", p.SchemaRegistryURL); err != nil {
+		return err
 	}
 	return nil
 }
@@ -105,7 +134,9 @@ func (c Consumer) Validate() error {
 	if c.AuthEnabled && c.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET is required when AUTH_ENABLED=true")
 	}
-
+	if err := validateHTTPUrl("SCHEMA_REGISTRY_URL", c.SchemaRegistryURL); err != nil {
+		return err
+	}
 	return nil
 }
 

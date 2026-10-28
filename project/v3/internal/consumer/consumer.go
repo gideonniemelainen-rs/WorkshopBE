@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -16,8 +15,10 @@ import (
 
 const (
 	writeAttempts = 5
-	writeBackoff  = 200 * time.Second
+	writeBackoff  = 200 * time.Millisecond
 )
+
+type Decoder func(value []byte) (models.RecentChange, error)
 
 // Weirdly enough, despite working with Kafka previously, I was not familiar with the term 'sink'. Neat
 type Sink interface {
@@ -38,7 +39,7 @@ func NewClient(cfg config.Consumer) (*kgo.Client, error) {
 	)
 }
 
-func Run(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerStats, batchMax int) error {
+func Run(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerStats, batchMax int, decode Decoder) error {
 	for ctx.Err() == nil {
 		fetches := cl.PollRecords(ctx, batchMax)
 		if fetches.IsClientClosed() {
@@ -52,7 +53,7 @@ func Run(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerSta
 			log.Printf("fetch error topic=%s partition=%d: %v", topic, partition, err)
 		})
 
-		err := processBatch(context.WithoutCancel(ctx), cl, sink, stats, fetches.Records())
+		err := processBatch(context.WithoutCancel(ctx), cl, sink, stats, fetches.Records(), decode)
 
 		cl.AllowRebalance()
 
@@ -64,16 +65,15 @@ func Run(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerSta
 	return nil
 }
 
-func processBatch(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerStats, records []*kgo.Record) error {
+func processBatch(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerStats, records []*kgo.Record, decode Decoder) error {
 	if len(records) == 0 {
 		return nil
 	}
 
 	events := make([]aggregate.Event, 0, len(records))
 	for _, r := range records {
-		var rc models.RecentChange
-		// Skip message if it can't be processed
-		if err := json.Unmarshal(r.Value, &rc); err != nil {
+		rc, err := decode(r.Value)
+		if err != nil {
 			log.Printf("skipping record that could not be decoded %s/%d@%d: %v", r.Topic, r.Partition, r.Offset, err)
 			continue
 		}
