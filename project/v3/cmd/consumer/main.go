@@ -44,7 +44,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("connect to scylla: %w", err)
 	}
-	defer sink.Close()
+	defer func() { _ = sink.Close() }()
 
 	cl, err := consumer.NewClient(cfg)
 	if err != nil {

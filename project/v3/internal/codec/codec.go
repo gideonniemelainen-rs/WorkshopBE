@@ -61,15 +61,16 @@ func (c *Codec) DecodeEvent(b []byte) (models.RecentChange, error) {
 func LookupSchemaID(ctx context.Context, registryURL string, subject string) (int, error) {
 	cl, err := sr.NewClient(sr.URLs(registryURL))
 	if err != nil {
-		return 0, fmt.Errorf("Schema registry client: %w", err)
+		// This is where I learned that capitalizing an error string causes lint problems, neat
+		return 0, fmt.Errorf("schema registry client: %w", err)
 	}
 
 	var lastError error
 	for attempt := 1; attempt <= lookupAttempts; attempt++ {
 		ss, err := cl.SchemaByVersion(ctx, subject, -1)
 		if err == nil {
-			if ss.Schema.Type != sr.TypeProtobuf {
-				return 0, fmt.Errorf("subject %q has schema type %v, expected PROTOBUF", subject, ss.Schema.Type)
+			if ss.Type != sr.TypeProtobuf {
+				return 0, fmt.Errorf("subject %q has schema type %v, expected PROTOBUF", subject, ss.Type)
 			}
 			return ss.ID, nil
 		}
