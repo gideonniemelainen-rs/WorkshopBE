@@ -6,26 +6,29 @@ import (
 	"net/http"
 	"strings"
 	"wikistream_project/internal/config"
+	"wikistream_project/internal/metrics"
 	"wikistream_project/internal/models"
 	"wikistream_project/internal/services"
 )
 
 type Server struct {
-	cfg   config.Consumer
-	auth  *services.AuthService
-	stats *models.ServerStats
+	cfg     config.Consumer
+	auth    *services.AuthService
+	stats   *models.ServerStats
+	metrics *metrics.Consumer
 }
 
 // Small handler to run on it
-func NewServer(cfg config.Consumer, stats *models.ServerStats) *Server {
+func NewServer(cfg config.Consumer, stats *models.ServerStats, m *metrics.Consumer) *Server {
 	users := map[string]string{
 		cfg.DefaultUser: cfg.DefaultPass,
 	}
 
 	return &Server{
-		cfg:   cfg,
-		auth:  services.NewAuthService(cfg.JWTSecret, users),
-		stats: stats,
+		cfg:     cfg,
+		auth:    services.NewAuthService(cfg.JWTSecret, users),
+		stats:   stats,
+		metrics: m,
 	}
 }
 
@@ -44,6 +47,10 @@ func (s *Server) Handler() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("Ok"))
 	})
+
+	// Endpoint for prometheus to read from
+	// I'm leaving this un-authed for now since I only want to expose the endpoint internally
+	mux.Handle("/metrics", s.metrics.Handler())
 
 	// Stats endpoint, a bit simplified from previous
 	mux.HandleFunc("/stats", s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
