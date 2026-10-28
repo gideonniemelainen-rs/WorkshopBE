@@ -17,6 +17,7 @@ type Producer struct {
 	StreamURL         string
 	UserAgent         string
 	FlushTimeout      time.Duration
+	MetricsAddr       string
 }
 
 type Consumer struct {
@@ -43,18 +44,19 @@ type Consumer struct {
 func LoadProducer() Producer {
 	return Producer{
 		Brokers:           splitCSV(getEnv("REDPANDA_BROKERS", "127.0.0.1:9092")),
-		Topic:             getEnv("REDPANDA_TOPIC", "wikistream.recentchange"),
+		Topic:             getEnv("REDPANDA_TOPIC", "wikistream.recentchange.proto"),
 		SchemaRegistryURL: getEnv("SCHEMA_REGISTRY_URL", "http://127.0.0.1:8081"),
 		StreamURL:         getEnv("STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange"),
 		UserAgent:         getEnv("USER_AGENT", "wikistream/0.1"),
 		FlushTimeout:      getDuration("FLUSH_TIMEOUT", 10*time.Second),
+		MetricsAddr:       getEnv("PRODUCER_METRICS_ADDR", ":9091"),
 	}
 }
 
 func LoadConsumer() Consumer {
 	return Consumer{
 		Brokers:           splitCSV(getEnv("REDPANDA_BROKERS", "127.0.0.1:9092")),
-		Topic:             getEnv("REDPANDA_TOPIC", "wikistream.recentchange"),
+		Topic:             getEnv("REDPANDA_TOPIC", "wikistream.recentchange.proto"),
 		SchemaRegistryURL: getEnv("SCHEMA_REGISTRY_URL", "http://127.0.0.1:8081"),
 		Group:             getEnv("CONSUMER_GROUP", "wikistream-consumer"),
 		BatchMaxRecords:   getEnvInt("BATCH_MAX_RECORDS", 500),
