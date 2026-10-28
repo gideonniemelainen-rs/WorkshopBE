@@ -37,7 +37,6 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        rpk topic create wikistream.recentchange -p 6 -r 1 --if-not-exists -X brokers=redpanda:9092 &&
         rpk topic create wikistream.recentchange.proto -p 6 -r 1 --if-not-exists -c retention.ms=604800000 -c cleanup.policy=delete -c compression.type=zstd -X brokers=redpanda:9092
     restart: "no"
     networks:
@@ -132,7 +131,37 @@ services:
     restart: unless-stopped
     networks:
       - wikistream-net
-
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    container_name: wikistream-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    networks:
+      - wikistream-net
+  grafana:
+    image: grafana/grafana:13.3.0
+    container_name: wikistream-grafana
+    envrionment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - wikistream-net
 volumes:
   redpanda-data:
   scylla-data:

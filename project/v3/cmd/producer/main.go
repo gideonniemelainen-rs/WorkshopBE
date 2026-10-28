@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync/atomic"
 	"syscall"
 	"time"
 	"wikistream_project/internal/codec"
 	"wikistream_project/internal/config"
+	"wikistream_project/internal/metrics"
 	"wikistream_project/internal/models"
 	"wikistream_project/internal/stream"
 
@@ -55,31 +55,31 @@ func run() error {
 	}
 	defer cl.Close()
 
-	var produced, failed atomic.Int64
+	m := metrics.NewProducer()
+	metricsServer := &http.Server{
+		Addr:              cfg.MetricsAddr,
+		Handler:           m.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		log.Printf("metrics listening on %s", cfg.MetricsAddr)
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("metrics server: %v", err)
+		}
+	}()
+	// Gonna wrap this defer func in advance because I know the linter is gonna yell at me, and I'm sensitive
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = metricsServer.Shutdown(shutdownCtx)
+	}()
 
 	err = stream.ConsumeEventStream(ctx, &http.Client{}, cfg.StreamURL, cfg.UserAgent, func(payload []byte) {
-		var rc models.RecentChange
-		if err := json.Unmarshal(payload, &rc); err != nil {
-			log.Printf("skipping event that could not be decoded: %v", err)
+		rec, ok := toRecord(payload, encoder, m)
+		if !ok {
 			return
 		}
-
-		value, err := encoder.EncodeEvent(rc)
-		if err != nil {
-			log.Printf("skipping event that could not be encoded: %v", err)
-		}
-
-		cl.Produce(context.Background(), &kgo.Record{
-			Key:   []byte(rc.ServerURL),
-			Value: value,
-		}, func(_ *kgo.Record, err error) {
-			if err != nil {
-				failed.Add(1)
-				log.Printf("produce failed: %v", err)
-				return
-			}
-			produced.Add(1)
-		})
+		publish(cl, m, rec)
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("stream stopped: %w", err)
@@ -93,6 +93,38 @@ func run() error {
 		return fmt.Errorf("flush buffered events: %w", err)
 	}
 
-	log.Printf("done: produced=%d failed=%d", produced.Load(), failed.Load())
+	log.Printf("done")
 	return nil
+}
+
+// decode a raw stream payload and prep it for redpanda consumption
+func toRecord(payload []byte, encoder *codec.Codec, m *metrics.Producer) (*kgo.Record, bool) {
+	m.StreamConsumed.Inc()
+
+	var rc models.RecentChange
+	if err := json.Unmarshal(payload, &rc); err != nil {
+		m.Failed.WithLabelValues(metrics.StageDecode).Inc()
+		log.Printf("skipping event that could not be decoded: %v", err)
+		return nil, false
+	}
+
+	value, err := encoder.EncodeEvent(rc)
+	if err != nil {
+		m.Failed.WithLabelValues(metrics.StageEncode).Inc()
+		log.Printf("skipping event that could not be encoded: %v", err)
+		return nil, false
+	}
+
+	return &kgo.Record{Key: []byte(rc.ServerURL), Value: value}, true
+}
+
+func publish(cl *kgo.Client, m *metrics.Producer, rec *kgo.Record) {
+	cl.Produce(context.Background(), rec, func(_ *kgo.Record, err error) {
+		if err != nil {
+			m.Failed.WithLabelValues(metrics.StageProduce).Inc()
+			log.Printf("produce failed: %v", err)
+			return
+		}
+		m.Persisted.Inc()
+	})
 }
