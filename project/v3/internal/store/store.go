@@ -4,23 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
-	"time"
 
 	"wikistream_project/internal/aggregate"
 	"wikistream_project/internal/config"
-	"wikistream_project/internal/models"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
 // Scylla Store setup
 type ScyllaStore struct {
-	session    *gocql.Session
-	keyspace   string
-	instanceID string
-	mutex      sync.Mutex
-	stats      *models.ServerStats
+	session  *gocql.Session
+	keyspace string
 }
 
 const createStatsBatchesTable = `
@@ -80,75 +74,6 @@ func NewScyllaStore(cfg config.Consumer) (*ScyllaStore, error) {
 	}
 
 	return &ScyllaStore{session: session, keyspace: keyspace}, nil
-}
-
-func (s *ScyllaStore) Record(rc models.RecentChange) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.stats.Record(rc)
-}
-
-func (s *ScyllaStore) SetError(err error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.stats.SetError(err)
-}
-
-func (s *ScyllaStore) Snapshot() models.ServerStatsSnapshot {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.stats.Snapshot()
-}
-
-func (s *ScyllaStore) Flush() error {
-	// This is the main reason the interface needs a flush method, since we'll likely need to aggregate and batch datapoints for time-series workload
-	s.mutex.Lock()
-	snapshot := s.stats.Snapshot()
-	s.stats = models.NewServerStats()
-	s.mutex.Unlock()
-
-	// Return nil if there are no stats to be flushed
-	if snapshot.Processed == 0 &&
-		snapshot.UniqueUserCount == 0 &&
-		snapshot.BotCount == 0 &&
-		snapshot.HumanCount == 0 &&
-		len(snapshot.ByServerURL) == 0 &&
-		snapshot.LastError == "" {
-		return nil
-	}
-
-	now := time.Now().UTC()
-	bucket := now.Truncate(time.Minute).Format(time.RFC3339) // Preferring format of RFC3339 specifically, looks to be timezoned which is helpful
-
-	// aggregate statistics to prep for write
-	byServerCounts := make(map[string]int64, len(snapshot.ByServerURL))
-	for k, v := range snapshot.ByServerURL {
-		byServerCounts[k] = int64(v)
-	}
-
-	// Build query to insert records
-	const insertQuery = `
-	INSERT INTO server_stats_by_minute (
-		bucket_start, metric_name, instance_id, ts, processed, unique_users, bot_count, human_count, by_server_url, last_error
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-
-	if err := s.session.Query(
-		insertQuery,
-		bucket,
-		"recentchange",
-		s.instanceID,
-		now,
-		int64(snapshot.Processed),
-		int64(snapshot.UniqueUserCount),
-		int64(snapshot.BotCount),
-		int64(snapshot.HumanCount),
-		byServerCounts,
-		snapshot.LastError,
-	).Exec(); err != nil {
-		return fmt.Errorf("insert into stats bucket error: %w", err)
-	}
-
-	return nil
 }
 
 func (s *ScyllaStore) WriteBatchRecord(ctx context.Context, rows []aggregate.Row) error {
