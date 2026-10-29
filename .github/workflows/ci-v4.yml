@@ -45,7 +45,7 @@ jobs:
 
       - name: Unit testing
         working-directory: ${{ env.APP_DIR }}
-        run: go test ./... -count=1 -p=1
+        run: go test -race ./... -count=1 -p=1
 
   # Integration Tests
   integration-tests:
