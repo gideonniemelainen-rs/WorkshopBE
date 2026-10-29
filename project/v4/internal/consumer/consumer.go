@@ -46,7 +46,7 @@ func NewClient(cfg config.Consumer, options ...kgo.Opt) (*kgo.Client, error) {
 }
 
 // Updating Run function to handle multiple workers
-func Run(ctx context.Context, cfg config.Consumer, sink Sink, stats *models.ServerStats, batchMax int, decode Decoder, m *metrics.Consumer) error {
+func Run(ctx context.Context, cfg config.Consumer, sink Sink, stats *models.ServerStats, decode Decoder, m *metrics.Consumer) error {
 	pollCtx, stopPolling := context.WithCancel(ctx)
 	defer stopPolling()
 

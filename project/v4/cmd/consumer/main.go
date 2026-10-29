@@ -47,12 +47,6 @@ func run() error {
 	}
 	defer func() { _ = sink.Close() }()
 
-	cl, err := consumer.NewClient(cfg)
-	if err != nil {
-		return fmt.Errorf("create kafka client: %w", err)
-	}
-	defer cl.Close()
-
 	stats := models.NewServerStats()
 	m := metrics.NewConsumer()
 
@@ -68,17 +62,17 @@ func run() error {
 	serverError := make(chan error, 1)
 	go func() {
 		log.Printf("HTTP listening on %s", cfg.HTTPAddr)
-		if err := httpServer.ListenAndServe(); err != nil && errors.Is(err, http.ErrServerClosed) {
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverError <- err
 			stop()
 		}
 	}()
 
-	runError := consumer.Run(ctx, cl, sink, stats, cfg.BatchMaxRecords, decoder.DecodeEvent, m)
+	runError := consumer.Run(ctx, cfg, sink, stats, decoder.DecodeEvent, m)
 
 	stop()
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("http shutdown: %v", err)
