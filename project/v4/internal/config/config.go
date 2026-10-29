@@ -62,6 +62,8 @@ func LoadConsumer() Consumer {
 		SchemaRegistryURL: getEnv("SCHEMA_REGISTRY_URL", "http://127.0.0.1:8081"),
 		Group:             getEnv("CONSUMER_GROUP", "wikistream-consumer"),
 		BatchMaxRecords:   getEnvInt("BATCH_MAX_RECORDS", 500),
+		Workers:           getEnvInt("CONSUMER_WORKERS", 3),
+		ShutdownTimeout:   getDuration("SHUTDOWN_TIMEOUT", 15*time.Second),
 
 		HTTPAddr:    getEnv("HTTP_ADDR", ":7000"),
 		JWTSecret:   getEnv("JWT_SECRET", "dear-god-no"),
@@ -141,6 +143,13 @@ func (c Consumer) Validate() error {
 	if err := validateHTTPUrl("SCHEMA_REGISTRY_URL", c.SchemaRegistryURL); err != nil {
 		return err
 	}
+	if c.Workers <= 0 {
+		return fmt.Errorf("CONSUMER_WORKERS must be greater than 0")
+	}
+	if c.ShutdownTimeout <= 0 {
+		return fmt.Errorf("SHUTDOWN_TIMEOUT must be greater than 0")
+	}
+
 	return nil
 }
 
