@@ -9,6 +9,8 @@ Coursework and a capstone project for a Go backend workshop. The project is **wi
 | `go_developers_guide/` | Per-section exercises from the course (`section2` – `section7`) |
 | `project/v1/` | Project version 1 |
 | `project/v2/` | Project version 2 |
+| `project/v3/` | Project version 3 |
+| `project/v4/` | Project version 4 *(in progress)* |
 
 Each version lives in its own directory with the application code under `cmd/`.
 
@@ -18,8 +20,8 @@ Each version lives in its own directory with the application code under `cmd/`.
 |---|---|---|---|
 | **v1** | 1–2 | Initial implementation and first run at dockerization | Done |
 | **v2** | 3–4 | Scylla DB, Docker Compose, CI/CD via GitHub Actions | Done |
-| **v3** | 5–7 | RedPanda, Protobuf support, observability | In-Progress |
-| **v4** | 8–10 | Multi-threading, Kubernetes conversion, RedPanda Connect for the final presentation | Planned |
+| **v3** | 5–7 | RedPanda, Protobuf support, observability | Done |
+| **v4** | 8–10 | Multi-threading, Kubernetes conversion, RedPanda Connect for the final presentation | In-Progress |
 
 ### v1: Core service
 
@@ -34,17 +36,36 @@ Each version lives in its own directory with the application code under `cmd/`.
 - `docker-compose` setup for the app and Scylla
 - GitHub Actions for CI/CD
 
-### v3: Streaming and observability *(planned)*
+### v3: Streaming and observability
 
-- RedPanda as the event backbone
-- Protobuf message definitions
-- Metrics, logging, and tracing
+- Producer / consumer split with RedPanda as the event backbone (6-partition topic, zstd, 7d retention)
+- Protobuf `RecentChange` message, generated with `buf` and registered in the Schema Registry (BACKWARD compatibility)
+- Consumer aggregates batches into Scylla with manual offset commits
+- Prometheus metrics from both services, scraped into a provisioned Grafana dashboard
+- Redpanda Console for inspecting topics and schemas
 
-### v4: Scale-out and final project *(planned)*
+### v4: Scale-out and final project *(in progress)*
 
-- Multi-threaded event processing
-- Kubernetes manifests
-- RedPanda Connect for the final presentation
+| Module | Topic |
+|---|---|
+| 8 | Multi-threaded event processing |
+| 9 | Kubernetes manifests |
+| 10 | RedPanda Connect for the final presentation |
+
+## Running v3
+
+From `project/v3`:
+
+```sh
+docker compose up --build
+```
+
+| Service | Port | Description |
+|---|---|---|
+| Consumer API | `7000` | `/status`, `/login`, `/stats`, `/metrics` |
+| Redpanda Console | `8080` | Topics and schema registry UI |
+| Prometheus | `9090` | Metrics and scrape targets (`/targets`) |
+| Grafana | `3000` | `Wikistream` folder, pipeline dashboard (admin password from `GRAFANA_ADMIN_PASSWORD`) |
 
 ## Running v2
 
