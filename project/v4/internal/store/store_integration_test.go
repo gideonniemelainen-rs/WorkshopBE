@@ -13,7 +13,7 @@ import (
 	"wikistream_project/internal/models"
 )
 
-func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
+func TestScyllaStoreWriteBatchRecordPersistsRowsAndCheckpoints(t *testing.T) {
 	host := os.Getenv("SCYLLA_HOSTS")
 	if host == "" {
 		host = "127.0.0.1"
@@ -24,6 +24,8 @@ func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
 		ScyllaKeyspace:    "wikistream",
 		ScyllaConsistency: "LOCAL_QUORUM",
 		ScyllaTimeout:     10 * time.Second,
+		Group:             "integration-test-group",
+		Topic:             "integration-test-topic",
 	}
 
 	store, err := NewScyllaStore(cfg)
@@ -40,7 +42,7 @@ func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
 	}
 
 	rows := aggregate.Build(metric, events)
-	if err := store.WriteBatchRecord(context.Background(), rows); err != nil {
+	if err := store.WriteBatchRecord(context.Background(), rows, map[int32]int64{0: 12}); err != nil {
 		t.Fatalf("WriteBatchRecord returned error: %v", err)
 	}
 
@@ -58,5 +60,13 @@ func TestScyllaStoreWriteBatchRecordPersistsRow(t *testing.T) {
 	}
 	if processed != 2 || botCount != 1 || humanCount != 1 {
 		t.Fatalf("persisted counts processed=%d bot=%d human=%d, expected 2/1/1", processed, botCount, humanCount)
+	}
+
+	checkpoints, err := store.LoadCheckpoints(context.Background())
+	if err != nil {
+		t.Fatalf("loadcheckpoints returned error: %v", err)
+	}
+	if got := checkpoints[0]; got != 12 {
+		t.Fatalf("checkpoint partition 0 = %d, expected 12", got)
 	}
 }

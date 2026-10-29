@@ -23,7 +23,7 @@ type Decoder func(value []byte) (models.RecentChange, error)
 
 // Weirdly enough, despite working with Kafka previously, I was not familiar with the term 'sink'. Neat
 type Sink interface {
-	WriteBatchRecord(ctx context.Context, rows []aggregate.Row) error
+	WriteBatchRecord(ctx context.Context, rows []aggregate.Row, checkpoints map[int32]int64) error
 }
 
 func NewClient(cfg config.Consumer) (*kgo.Client, error) {
