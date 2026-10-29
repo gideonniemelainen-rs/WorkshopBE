@@ -38,8 +38,8 @@ const createCheckpointsTable = `
 	CREATE TABLE IF NOT EXISTS consumer_checkpoints (
 		consumer_group text,
 		topic text,
-		partition int
-		next_offset bigint
+		partition int,
+		next_offset bigint,
 		PRIMARY KEY ((consumer_group, topic), partition)
 	)
 `
