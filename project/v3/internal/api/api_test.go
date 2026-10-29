@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"wikistream_project/internal/config"
+	"wikistream_project/internal/metrics"
 	"wikistream_project/internal/models"
 )
 
@@ -17,7 +19,21 @@ func newTestHandler(authEnabled bool) http.Handler {
 		DefaultUser: "admin",
 		DefaultPass: "admin",
 	}
-	return NewServer(cfg, models.NewServerStats()).Handler()
+	return NewServer(cfg, models.NewServerStats(), metrics.NewConsumer()).Handler()
+}
+
+func TestMetricsEndpointIsOpenWhenAuthEnabled(t *testing.T) {
+	handler := newTestHandler(true)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/metrics without token = %d, expected 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "wikistream_consumer_events_processed_total") {
+		t.Fatalf("/metrics body missing consumer counters")
+	}
 }
 
 func TestStatusReturnsOk(t *testing.T) {
