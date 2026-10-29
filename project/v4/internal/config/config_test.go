@@ -15,6 +15,8 @@ func buildValidConsumer() Consumer {
 		ScyllaKeyspace:    "ks",
 		AuthEnabled:       false,
 		SchemaRegistryURL: "http://redpanda:8081",
+		Workers:           3,
+		ShutdownTimeout:   10,
 	}
 }
 
