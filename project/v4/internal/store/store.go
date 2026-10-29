@@ -15,6 +15,8 @@ import (
 type ScyllaStore struct {
 	session  *gocql.Session
 	keyspace string
+	group    string
+	topic    string
 }
 
 const createStatsBatchesTable = `
@@ -32,11 +34,29 @@ const createStatsBatchesTable = `
 		PRIMARY KEY ((metric_name, bucket_start), partition, first_offset)
 	)`
 
+const createCheckpointsTable = `
+	CREATE TABLE IF NOT EXISTS consumer_checkpoints (
+		consumer_group text,
+		topic text,
+		partition int
+		next_offset bigint
+		PRIMARY KEY ((consumer_group, topic), partition)
+	)
+`
+
 const insertBatchRecord = `
 INSERT INTO server_stats_batches (
 	metric_name, bucket_start, partition, first_offset, last_offset,
 	processed, unique_users, bot_count, human_count, by_server_url
 ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+const upsertCheckpoint = `
+INSERT INTO consumer_checkpoints (consumer_group, topic, partition, next_offset)
+values (?, ?, ?, ?)`
+
+const selectCheckpoints = `
+SELECT partition, next_offset FROM consumer_checkpoints
+WHERE consumer_group = ? AND topic = ?`
 
 func NewScyllaStore(cfg config.Consumer) (*ScyllaStore, error) {
 	consistency, err := parseConsistency(cfg.ScyllaConsistency)
@@ -73,12 +93,23 @@ func NewScyllaStore(cfg config.Consumer) (*ScyllaStore, error) {
 		return nil, fmt.Errorf("create server_stats_batches table: %w", err)
 	}
 
-	return &ScyllaStore{session: session, keyspace: keyspace}, nil
+	// Now we need to create checkpoints table
+	if err := session.Query(createCheckpointsTable).Exec(); err != nil {
+		session.Close()
+		return nil, fmt.Errorf("create_consumer_checkpoints_table: %w", err)
+	}
+
+	return &ScyllaStore{session: session, keyspace: keyspace, group: cfg.Group, topic: cfg.Topic}, nil
 }
 
-func (s *ScyllaStore) WriteBatchRecord(ctx context.Context, rows []aggregate.Row) error {
+func (s *ScyllaStore) WriteBatchRecord(ctx context.Context, rows []aggregate.Row, checkpoints map[int32]int64) error {
+	if len(rows) == 0 && len(checkpoints) == 0 {
+		return nil
+	}
+
+	batch := s.session.Batch(gocql.LoggedBatch)
 	for _, r := range rows {
-		err := s.session.Query(
+		batch.Query(
 			insertBatchRecord,
 			r.MetricName,
 			r.BucketStart,
@@ -90,12 +121,30 @@ func (s *ScyllaStore) WriteBatchRecord(ctx context.Context, rows []aggregate.Row
 			r.BotCount,
 			r.HumanCount,
 			r.ByServerURL,
-		).ExecContext(ctx)
-		if err != nil {
-			return fmt.Errorf("insert batch partion=%d first_offset=%d: %w", r.Partition, r.FirstOffset, err)
-		}
+		)
 	}
+	for partition, next := range checkpoints {
+		batch.Query(upsertCheckpoint, s.group, s.topic, partition, next)
+	}
+	if err := batch.ExecContext(ctx); err != nil {
+		return fmt.Errorf("logged batch of %d rows and %d checkpoints: %w", len(rows), len(checkpoints), err)
+	}
+
 	return nil
+}
+
+func (s *ScyllaStore) LoadCheckpoints(ctx context.Context) (map[int32]int64, error) {
+	checkpoints := make(map[int32]int64)
+	iterator := s.session.Query(selectCheckpoints, s.group, s.topic).IterContext(ctx)
+	var partition int32
+	var next int64
+	for iterator.Scan(&partition, &next) {
+		checkpoints[partition] = next
+	}
+	if err := iterator.Close(); err != nil {
+		return nil, fmt.Errorf("load checkpoints: %w", err)
+	}
+	return checkpoints, nil
 }
 
 func (s *ScyllaStore) Close() error {
