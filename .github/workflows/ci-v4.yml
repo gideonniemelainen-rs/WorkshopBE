@@ -77,7 +77,7 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         env:
           SCYLLA_HOSTS: 127.0.0.1
-        run: go test -tags=integration ./... -count=1 -p=1
+        run: go test -race -tags=integration ./... -count=1 -p=1
 
   # Build Image
   build-image:
