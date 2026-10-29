@@ -9,6 +9,7 @@ import (
 	"wikistream_project/internal/aggregate"
 	"wikistream_project/internal/codec"
 	"wikistream_project/internal/config"
+	"wikistream_project/internal/metrics"
 	"wikistream_project/internal/models"
 
 	"github.com/twmb/franz-go/pkg/kfake"
@@ -146,9 +147,10 @@ func TestRunWritesThenCommitsBatchRecord(t *testing.T) {
 		}
 	}}
 	stats := models.NewServerStats()
+	m := metrics.NewConsumer()
 
 	done := make(chan error, 1)
-	go func() { done <- Run(ctx, cl, sink, stats, 10, testCodec.DecodeEvent) }()
+	go func() { done <- Run(ctx, cl, sink, stats, 10, testCodec.DecodeEvent, m) }()
 
 	select {
 	case err := <-done:
@@ -185,11 +187,12 @@ func TestRunDoesNotCommitWhenWriteFails(t *testing.T) {
 
 	sink := &mockSink{err: errors.New("Mock Scylla unavailable")}
 	stats := models.NewServerStats()
+	m := metrics.NewConsumer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	err = Run(ctx, cl, sink, stats, 10, testCodec.DecodeEvent)
+	err = Run(ctx, cl, sink, stats, 10, testCodec.DecodeEvent, m)
 	cl.Close()
 
 	if err == nil {

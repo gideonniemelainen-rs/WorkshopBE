@@ -14,6 +14,7 @@ import (
 	"wikistream_project/internal/codec"
 	"wikistream_project/internal/config"
 	"wikistream_project/internal/consumer"
+	"wikistream_project/internal/metrics"
 	"wikistream_project/internal/models"
 	"wikistream_project/internal/store"
 )
@@ -53,10 +54,11 @@ func run() error {
 	defer cl.Close()
 
 	stats := models.NewServerStats()
+	m := metrics.NewConsumer()
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.NewServer(cfg, stats).Handler(),
+		Handler:           api.NewServer(cfg, stats, m).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -72,7 +74,7 @@ func run() error {
 		}
 	}()
 
-	runError := consumer.Run(ctx, cl, sink, stats, cfg.BatchMaxRecords, decoder.DecodeEvent)
+	runError := consumer.Run(ctx, cl, sink, stats, cfg.BatchMaxRecords, decoder.DecodeEvent, m)
 
 	stop()
 

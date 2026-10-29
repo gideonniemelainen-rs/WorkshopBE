@@ -8,6 +8,7 @@ import (
 	"time"
 	"wikistream_project/internal/aggregate"
 	"wikistream_project/internal/config"
+	"wikistream_project/internal/metrics"
 	"wikistream_project/internal/models"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -39,7 +40,7 @@ func NewClient(cfg config.Consumer) (*kgo.Client, error) {
 	)
 }
 
-func Run(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerStats, batchMax int, decode Decoder) error {
+func Run(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerStats, batchMax int, decode Decoder, m *metrics.Consumer) error {
 	for ctx.Err() == nil {
 		fetches := cl.PollRecords(ctx, batchMax)
 		if fetches.IsClientClosed() {
@@ -53,7 +54,7 @@ func Run(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerSta
 			log.Printf("fetch error topic=%s partition=%d: %v", topic, partition, err)
 		})
 
-		err := processBatch(context.WithoutCancel(ctx), cl, sink, stats, fetches.Records(), decode)
+		err := processBatch(context.WithoutCancel(ctx), cl, sink, stats, fetches.Records(), decode, m)
 
 		cl.AllowRebalance()
 
@@ -65,15 +66,17 @@ func Run(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerSta
 	return nil
 }
 
-func processBatch(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerStats, records []*kgo.Record, decode Decoder) error {
+func processBatch(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.ServerStats, records []*kgo.Record, decode Decoder, m *metrics.Consumer) error {
 	if len(records) == 0 {
 		return nil
 	}
+	m.RedpandaConsumed.Add(float64(len(records)))
 
 	events := make([]aggregate.Event, 0, len(records))
 	for _, r := range records {
 		rc, err := decode(r.Value)
 		if err != nil {
+			m.Failed.WithLabelValues(metrics.StageDecode).Inc()
 			log.Printf("skipping record that could not be decoded %s/%d@%d: %v", r.Topic, r.Partition, r.Offset, err)
 			continue
 		}
@@ -83,6 +86,7 @@ func processBatch(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.
 	if len(events) > 0 {
 		rows := aggregate.Build(aggregate.MetricName, events)
 		if err := writeWithRetry(ctx, sink, rows); err != nil {
+			m.Failed.WithLabelValues(metrics.StageWrite).Add(float64(len(events)))
 			stats.SetError(err)
 			return fmt.Errorf("write batch of %d rows: %w", len(rows), err)
 		}
@@ -92,10 +96,12 @@ func processBatch(ctx context.Context, cl *kgo.Client, sink Sink, stats *models.
 	}
 
 	if err := cl.CommitRecords(ctx, records...); err != nil {
+		m.Failed.WithLabelValues(metrics.StageCommit).Add(float64(len(events)))
 		stats.SetError(err)
 		return fmt.Errorf("commit offsets: %w", err)
 	}
 
+	m.Processed.Add(float64(len(events)))
 	stats.SetError(nil)
 	return nil
 }
