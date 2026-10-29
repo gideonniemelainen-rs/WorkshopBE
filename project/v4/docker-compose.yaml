@@ -1,0 +1,173 @@
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.5
+    container_name: wikistream-redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+    ports:
+      - "19092:9092"
+      - "8081:8081"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --exit-when-healthy || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - wikistream-net
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.5
+    container_name: wikistream-redpanda-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        rpk topic create wikistream.recentchange.proto -p 6 -r 1 --if-not-exists -c retention.ms=604800000 -c cleanup.policy=delete -c compression.type=zstd -X brokers=redpanda:9092
+    restart: "no"
+    networks:
+      - wikistream-net
+  schema-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.5
+    container_name: wikistream-schema-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    volumes:
+      - ./proto/recentchange/v1/recentchange.proto:/schemas/recentchange.proto:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        rpk registry schema create wikistream.recentchange.proto-value --schema /schemas/recentchange.proto --type protobuf -X registry.hosts=redpanda:8081 &&
+        rpk registry compatibility-level set wikistream.recentchange.proto-value --level BACKWARD -X registry.hosts=redpanda:8081
+    restart: "no"
+    networks:
+      - wikistream-net
+
+  scylla:
+    image: scylladb/scylla
+    container_name: wikistream-scylla
+    command: ["--smp", "1", "--memory", "1G", "--overprovisioned=1"]
+    ports:
+      - "9042:9042"
+      - "9180:9180"
+    volumes:
+      - scylla-data:/var/lib/scylla
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - wikistream-net
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: producer
+    container_name: wikistream-producer
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      schema-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    restart: unless-stopped
+    stop_grace_period: 30s
+    networks:
+      - wikistream-net
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wikistream-consumer
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      scylla:
+        condition: service_healthy
+      schema-init:
+        condition: service_completed_successfully
+    ports:
+      - "7000:7000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    stop_grace_period: 30s
+    networks:
+      - wikistream-net
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v3.13.0
+    container_name: wikistream-console
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      schema-init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      SCHEMAREGISTRY_ENABLED: "true"
+      SCHEMAREGISTRY_URLS: http://redpanda:8081
+    restart: unless-stopped
+    networks:
+      - wikistream-net
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    container_name: wikistream-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    networks:
+      - wikistream-net
+  grafana:
+    image: grafana/grafana:13.3.0
+    container_name: wikistream-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - wikistream-net
+volumes:
+  redpanda-data:
+  scylla-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  wikistream-net:
+    driver: bridge
