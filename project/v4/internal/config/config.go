@@ -26,6 +26,8 @@ type Consumer struct {
 	SchemaRegistryURL string
 	Group             string
 	BatchMaxRecords   int
+	Workers           int
+	ShutdownTimeout   time.Duration
 	HTTPAddr          string
 	JWTSecret         string
 	AuthEnabled       bool
