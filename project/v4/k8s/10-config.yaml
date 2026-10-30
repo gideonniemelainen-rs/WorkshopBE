@@ -1,0 +1,27 @@
+# Non-secret settings for every config.go key. Secrets come from wikistream-secrets (scripts/sync-config.sh).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wikistream-config
+  namespace: wikistream
+data:
+  REDPANDA_BROKERS: "redpanda:9092"
+  REDPANDA_TOPIC: "wikistream.recentchange.proto"
+  SCHEMA_REGISTRY_URL: "http://redpanda:8081"
+  STREAM_URL: "https://stream.wikimedia.org/v2/stream/recentchange"
+  USER_AGENT: "wikistream/0.1"
+  FLUSH_TIMEOUT: "20s"
+  PRODUCER_METRICS_ADDR: ":9091"
+  CONSUMER_GROUP: "wikistream-consumer"
+  BATCH_MAX_RECORDS: "500"
+  CONSUMER_WORKERS: "3"
+  SHUTDOWN_TIMEOUT: "15s"
+  HTTP_ADDR: ":7000"
+  AUTH_ENABLED: "true"
+  DEFAULT_USER: "admin"
+  SCYLLA_HOSTS: "scylla-client:9042"
+  SCYLLA_KEYSPACE: "wikistream"
+  SCYLLA_CONSISTENCY: "LOCAL_QUORUM"
+  SCYLLA_TIMEOUT: "5s"
+  SCYLLA_DATACENTER: "datacenter1"
+  SCYLLA_REPLICATION_FACTOR: "3"

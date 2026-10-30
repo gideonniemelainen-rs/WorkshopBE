@@ -26,6 +26,9 @@ func TestScyllaStoreWriteBatchRecordPersistsRowsAndCheckpoints(t *testing.T) {
 		ScyllaTimeout:     10 * time.Second,
 		Group:             "integration-test-group",
 		Topic:             "integration-test-topic",
+
+		ScyllaDatacenter:        "datacenter1",
+		ScyllaReplicationFactor: 1,
 	}
 
 	store, err := NewScyllaStore(cfg)
