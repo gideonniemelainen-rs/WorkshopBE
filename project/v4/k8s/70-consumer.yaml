@@ -18,8 +18,8 @@ spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: consumer
-          image: wikistream-consumer:dev
-          imagePullPolicy: IfNotPresent
+          image: docker.redpanda.com/redpandadata/connect:4.116.1
+          args: ["run", "/connect/consumer.yaml"]
           envFrom:
             - configMapRef:
                 name: wikistream-config
@@ -28,17 +28,25 @@ spec:
           ports:
             - name: http
               containerPort: 7000
+          volumeMounts:
+            - name: connect-config
+              mountPath: /connect
+              readOnly: true
           readinessProbe:
             httpGet:
-              path: /status
+              path: /ping
               port: http
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /status
+              path: /ping
               port: http
             initialDelaySeconds: 60
             periodSeconds: 20
+      volumes:
+        - name: connect-config
+          configMap:
+            name: consumer-connect-config
 ---
 apiVersion: v1
 kind: Service

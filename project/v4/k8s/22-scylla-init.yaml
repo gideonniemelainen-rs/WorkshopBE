@@ -1,0 +1,38 @@
+# Re-run with: kubectl delete job -n wikistream scylla-init, then apply again.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: scylla-init
+  namespace: wikistream
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: cqlsh
+          image: scylladb/scylla:6.2
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              set -eu;
+              auth="";
+              if [ -n "${SCYLLA_USERNAME:-}" ]; then auth="-u ${SCYLLA_USERNAME} -p ${SCYLLA_PASSWORD}"; fi;
+              cqlsh "$SCYLLA_HOST" 9042 $auth -e "CREATE KEYSPACE IF NOT EXISTS ${SCYLLA_KEYSPACE} WITH replication = {'class': 'NetworkTopologyStrategy', '${SCYLLA_DATACENTER}': ${SCYLLA_REPLICATION_FACTOR}}" &&
+              cqlsh "$SCYLLA_HOST" 9042 $auth -k "$SCYLLA_KEYSPACE" -f /schema/schema.cql
+          env:
+            - name: SCYLLA_HOST
+              value: scylla-client
+          envFrom:
+            - configMapRef:
+                name: wikistream-config
+            - secretRef:
+                name: wikistream-secrets
+          volumeMounts:
+            - name: schema
+              mountPath: /schema
+              readOnly: true
+      volumes:
+        - name: schema
+          configMap:
+            name: scylla-schema

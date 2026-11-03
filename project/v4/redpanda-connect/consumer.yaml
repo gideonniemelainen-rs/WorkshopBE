@@ -1,0 +1,82 @@
+# Redpanda Connect consumer: Kafka -> protobuf decode -> Scylla per-event rows.
+# Replaces the Go consumer. Re-consumed offsets overwrite the same primary key, so replays do not duplicate rows.
+http:
+  enabled: true
+  address: 0.0.0.0:7000
+
+metrics:
+  prometheus: {}
+
+shutdown_timeout: ${SHUTDOWN_TIMEOUT:15s}
+
+input:
+  kafka_franz:
+    seed_brokers: ["${REDPANDA_BROKERS:redpanda:9092}"]
+    topics: ["${REDPANDA_TOPIC:wikistream.recentchange.proto}"]
+    consumer_group: "${CONSUMER_GROUP:wikistream-consumer}"
+    start_offset: earliest
+    commit_period: 1s
+
+pipeline:
+  threads: ${CONSUMER_WORKERS:3}
+  processors:
+    - metric:
+        type: counter
+        name: wikistream_consumer_redpanda_events_consumed_total
+        value: "1"
+    - schema_registry_decode:
+        url: "${SCHEMA_REGISTRY_URL:http://redpanda:8081}"
+        protobuf:
+          use_proto_names: true
+          serialize_to_json: true
+    - mapping: |
+        let ts = this.timestamp.number().or(0)
+        root.minute_bucket = if $ts <= 0 { "unknown" } else { ($ts - $ts % 60).ts_unix().ts_tz("UTC").ts_format("2006-01-02T15:04:05Z") }
+        root.partition = meta("kafka_partition").number().int64()
+        root.offset = meta("kafka_offset").number().int64()
+        root.event_id = this.id.number().or(0).int64()
+        root.event_timestamp = $ts.int64()
+        root.type = this.type.or("")
+        root.namespace = this.namespace.or(0).int64()
+        root.title = this.title.or("")
+        root.username = this.user.or("")
+        root.bot = this.bot.or(false)
+        root.minor = this.minor.or(false)
+        root.server_url = this.server_url.or("")
+        root.server_name = this.server_name.or("")
+        root.wiki = this.wiki.or("")
+        root.comment = this.comment.or("")
+    - metric:
+        type: counter
+        name: wikistream_consumer_events_processed_total
+        value: "1"
+    - metric:
+        type: counter
+        name: wikistream_consumer_events_by_server_total
+        labels:
+          server_name: '${! json("server_name") }'
+        value: "1"
+
+output:
+  cassandra:
+    addresses: ["${SCYLLA_HOSTS:scylla-client:9042}"]
+    disable_initial_host_lookup: true
+    timeout: ${SCYLLA_TIMEOUT:5s}
+    host_selection_policy:
+      local_dc: "${SCYLLA_DATACENTER:datacenter1}"
+    password_authenticator:
+      enabled: ${SCYLLA_AUTH_ENABLED:false}
+      username: "${SCYLLA_USERNAME:}"
+      password: "${SCYLLA_PASSWORD:}"
+    consistency: ${SCYLLA_CONSISTENCY:LOCAL_QUORUM}
+    logged_batch: false
+    max_in_flight: 64
+    query: >-
+      INSERT INTO ${SCYLLA_KEYSPACE:wikistream}.recent_change_events
+      (minute_bucket, partition, offset, event_id, event_timestamp, type, namespace, title, username, bot, minor, server_url, server_name, wiki, comment)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    args_mapping: |
+      root = [this.minute_bucket, this.partition, this.offset, this.event_id, this.event_timestamp, this.type, this.namespace, this.title, this.username, this.bot, this.minor, this.server_url, this.server_name, this.wiki, this.comment]
+    batching:
+      count: ${BATCH_MAX_RECORDS:500}
+      period: 1s
