@@ -74,8 +74,8 @@ func NewScyllaStore(cfg config.Consumer) (*ScyllaStore, error) {
 	}
 
 	createKeyspace := fmt.Sprintf(
-		"CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = {'class': 'NetworkTopologyStrategy', 'datacenter1': 1}",
-		keyspace,
+		"CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = {'class': 'NetworkTopologyStrategy', '%s': %d}",
+		keyspace, cfg.ScyllaDatacenter, cfg.ScyllaReplicationFactor,
 	)
 	err = bootstrapSession.Query(createKeyspace).Exec()
 	bootstrapSession.Close()

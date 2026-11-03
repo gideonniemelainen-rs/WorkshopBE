@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: scylla
+  namespace: wikistream
+spec:
+  clusterIP: None
+  selector:
+    app: scylla
+  ports:
+    - name: cql
+      port: 9042
+    - name: inter-node
+      port: 7000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scylla-client
+  namespace: wikistream
+spec:
+  selector:
+    app: scylla
+  ports:
+    - name: cql
+      port: 9042
+      targetPort: cql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: scylla
+  namespace: wikistream
+spec:
+  serviceName: scylla
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: scylla
+  template:
+    metadata:
+      labels:
+        app: scylla
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: scylla
+          image: scylladb/scylla:6.2
+          args:
+            - --seeds=scylla-0.scylla.wikistream.svc.cluster.local
+            - --smp=1
+            - --memory=1G
+            - --overprovisioned=1
+            - --developer-mode=1
+          ports:
+            - name: cql
+              containerPort: 9042
+            - name: inter-node
+              containerPort: 7000
+          readinessProbe:
+            exec:
+              command: ["cqlsh", "-e", "DESCRIBE KEYSPACES"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/scylla
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

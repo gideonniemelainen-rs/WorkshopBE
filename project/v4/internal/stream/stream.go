@@ -37,7 +37,7 @@ func ConsumeEventStream(ctx context.Context, client *http.Client, url string, us
 		req.Header.Set("Accept", "text/event-stream")
 		req.Header.Set("Cache-Control", "no-cache")
 		// need to set a user agent header apparently, as per API spec
-		req.Header.Set("User-Agent", "GoLearningStreamsDemo/0.1 (gideon.niemelainen@redspace.com)")
+		req.Header.Set("User-Agent", userAgent)
 		// Another header for ID tracking, because why not
 		if lastEventID != "" {
 			req.Header.Set("Last-Event-ID", lastEventID)

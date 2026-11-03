@@ -58,7 +58,7 @@ func run() error {
 	m := metrics.NewProducer()
 	metricsServer := &http.Server{
 		Addr:              cfg.MetricsAddr,
-		Handler:           m.Handler(),
+		Handler:           metricsMux(m),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
@@ -127,4 +127,18 @@ func publish(cl *kgo.Client, m *metrics.Producer, rec *kgo.Record) {
 		}
 		m.Persisted.Inc()
 	})
+}
+
+func metricsMux(m *metrics.Producer) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Ok"))
+	})
+	mux.Handle("/metrics", m.Handler())
+	return mux
 }

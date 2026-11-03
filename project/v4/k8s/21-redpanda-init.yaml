@@ -1,0 +1,51 @@
+# Re-run with: kubectl delete job -n wikistream redpanda-init-topic redpanda-init-schema, then apply again.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-init-topic
+  namespace: wikistream
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: rpk
+          image: docker.redpanda.com/redpandadata/redpanda:v26.2.5
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              rpk topic create "$REDPANDA_TOPIC" -p 6 -r 1 --if-not-exists -c retention.ms=604800000 -c cleanup.policy=delete -c compression.type=zstd -X brokers=redpanda:9092
+          envFrom:
+            - configMapRef:
+                name: wikistream-config
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-init-schema
+  namespace: wikistream
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: rpk
+          image: docker.redpanda.com/redpandadata/redpanda:v26.2.5
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              rpk registry schema create "${REDPANDA_TOPIC}-value" --schema /schemas/recentchange.proto --type protobuf -X registry.hosts=redpanda:8081 &&
+              rpk registry compatibility-level set "${REDPANDA_TOPIC}-value" --level BACKWARD -X registry.hosts=redpanda:8081
+          envFrom:
+            - configMapRef:
+                name: wikistream-config
+          volumeMounts:
+            - name: schema
+              mountPath: /schemas
+              readOnly: true
+      volumes:
+        - name: schema
+          configMap:
+            name: redpanda-schema

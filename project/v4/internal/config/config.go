@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,9 @@ type Consumer struct {
 	ScyllaPassword    string
 	ScyllaConsistency string
 	ScyllaTimeout     time.Duration
+
+	ScyllaDatacenter        string
+	ScyllaReplicationFactor int
 }
 
 func LoadProducer() Producer {
@@ -77,6 +81,9 @@ func LoadConsumer() Consumer {
 		ScyllaPassword:    getEnv("SCYLLA_PASSWORD", ""),
 		ScyllaConsistency: getEnv("SCYLLA_CONSISTENCY", "LOCAL_QUORUM"),
 		ScyllaTimeout:     getDuration("SCYLLA_TIMEOUT", 5*time.Second),
+
+		ScyllaDatacenter:        getEnv("SCYLLA_DATACENTER", "datacenter1"),
+		ScyllaReplicationFactor: getEnvInt("SCYLLA_REPLICATION_FACTOR", 1),
 	}
 }
 
@@ -118,6 +125,8 @@ func (p Producer) Validate() error {
 	return nil
 }
 
+var datacenterPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
 func (c Consumer) Validate() error {
 	if len(c.Brokers) == 0 {
 		return fmt.Errorf("REDPANDA_BROKERS is required")
@@ -133,6 +142,12 @@ func (c Consumer) Validate() error {
 	}
 	if c.ScyllaKeyspace == "" {
 		return fmt.Errorf("SCYLLA_KEYSPACE is required")
+	}
+	if !datacenterPattern.MatchString(c.ScyllaDatacenter) {
+		return fmt.Errorf("SCYLLA_DATACENTER must contain only letters, digits, '-' or '_'")
+	}
+	if c.ScyllaReplicationFactor <= 0 {
+		return fmt.Errorf("SCYLLA_REPLICATION_FACTOR must be greater than 0")
 	}
 	if len(c.ScyllaHosts) == 0 || c.ScyllaHosts[0] == "" {
 		return fmt.Errorf("SCYLLA_HOSTS is required")

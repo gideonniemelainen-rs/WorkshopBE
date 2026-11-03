@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 	"wikistream_project/internal/codec"
@@ -88,4 +90,20 @@ func TestPublishCountsPersistedEvents(t *testing.T) {
 
 	assertCounter(t, "persisted", m.Persisted, 3)
 	assertCounter(t, "produce failed", m.Failed.WithLabelValues(metrics.StageProduce), 0)
+}
+
+func TestMetricsMuxServesStatusAndMetrics(t *testing.T) {
+	h := metricsMux(metrics.NewProducer())
+
+	for path, want := range map[string]int{
+		"/status":  http.StatusOK,
+		"/metrics": http.StatusOK,
+		"/missing": http.StatusNotFound,
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != want {
+			t.Fatalf("GET %s = %d, expected %d", path, rec.Code, want)
+		}
+	}
 }
