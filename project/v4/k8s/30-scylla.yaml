@@ -33,7 +33,7 @@ metadata:
   namespace: wikistream
 spec:
   serviceName: scylla
-  replicas: 3
+  replicas: 1
   podManagementPolicy: OrderedReady
   selector:
     matchLabels:
