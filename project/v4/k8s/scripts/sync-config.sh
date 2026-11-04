@@ -47,6 +47,12 @@ kubectl create secret generic wikistream-secrets -n "$NS" \
 apply_configmap redpanda-schema \
   --from-file=recentchange.proto=proto/recentchange/v1/recentchange.proto
 
+apply_configmap scylla-schema \
+  --from-file=schema.cql=scylla/schema.cql
+
+apply_configmap consumer-connect-config \
+  --from-file=consumer.yaml=redpanda-connect/consumer.yaml
+
 apply_configmap prometheus-config \
   --from-file=prometheus.yml=observability/prometheus/prometheus.yml
 
@@ -57,6 +63,7 @@ apply_configmap grafana-dashboard-provider \
   --from-file=prometheus.yaml=observability/grafana/provisioning/dashboards/prometheus.yaml
 
 apply_configmap grafana-dashboards \
-  --from-file=observability/grafana/dashboards/wikistream-pipeline.json
+  --from-file=observability/grafana/dashboards/wikistream-pipeline.json \
+  --from-file=observability/grafana/dashboards/redpanda-connect.json
 
 echo "secrets and file-based configmaps applied to namespace $NS"

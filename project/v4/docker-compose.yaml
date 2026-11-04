@@ -94,22 +94,46 @@ services:
     stop_grace_period: 30s
     networks:
       - wikistream-net
+  scylla-init:
+    image: scylladb/scylla
+    container_name: wikistream-scylla-init
+    depends_on:
+      scylla:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      SCYLLA_HOST: scylla
+    volumes:
+      - ./scylla/schema.cql:/schema/schema.cql:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -eu;
+        auth="";
+        if [ -n "$${SCYLLA_USERNAME:-}" ]; then auth="-u $${SCYLLA_USERNAME} -p $${SCYLLA_PASSWORD}"; fi;
+        cqlsh "$$SCYLLA_HOST" 9042 $$auth -e "CREATE KEYSPACE IF NOT EXISTS $$SCYLLA_KEYSPACE WITH replication = {'class': 'NetworkTopologyStrategy', '$$SCYLLA_DATACENTER': $$SCYLLA_REPLICATION_FACTOR}" &&
+        cqlsh "$$SCYLLA_HOST" 9042 $$auth -k "$$SCYLLA_KEYSPACE" -f /schema/schema.cql
+    restart: "no"
+    networks:
+      - wikistream-net
   consumer:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: docker.redpanda.com/redpandadata/connect:4.116.1
     container_name: wikistream-consumer
+    command: ["run", "/connect/consumer.yaml"]
     depends_on:
       redpanda-init:
         condition: service_completed_successfully
-      scylla:
-        condition: service_healthy
+      scylla-init:
+        condition: service_completed_successfully
       schema-init:
         condition: service_completed_successfully
     ports:
       - "7000:7000"
     env_file:
       - .env
+    volumes:
+      - ./redpanda-connect/consumer.yaml:/connect/consumer.yaml:ro
     restart: unless-stopped
     stop_grace_period: 30s
     networks:

@@ -100,7 +100,7 @@
                 {
                     "refId": "A",
                     "datasource": { "type": "prometheus", "uid": "prometheus"},
-                    "expr": "sum by (stage) (rate(wikistream_consumer_events_failed_total[1m]))",
+                    "expr": "sum by (stage) (label_replace(label_replace(rate(processor_error{path=~\"root\\\\.pipeline\\\\.processors\\\\.[12]\"}[1m]), \"stage\", \"decode\", \"path\", \".*processors\\\\.1\"), \"stage\", \"mapping\", \"path\", \".*processors\\\\.2\") or label_replace(rate(output_error{path=\"root.output\"}[1m]), \"stage\", \"write\", \"path\", \".*\"))",
                     "legendFormat": "{{stage}}"
                 }
             ]
