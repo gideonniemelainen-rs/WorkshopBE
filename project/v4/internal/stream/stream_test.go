@@ -2,6 +2,7 @@ package stream
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -39,7 +40,10 @@ func TestConsumeEventStreamSendsConfiguredUserAgent(t *testing.T) {
 
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("ConsumeEventStream returned %v, expected context.Canceled", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("ConsumeEventStream did not return after cancel")
 	}
