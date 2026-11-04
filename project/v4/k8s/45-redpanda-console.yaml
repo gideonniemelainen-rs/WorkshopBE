@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda-console
+  namespace: wikistream
+spec:
+  selector:
+    app: redpanda-console
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redpanda-console
+  namespace: wikistream
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redpanda-console
+  template:
+    metadata:
+      labels:
+        app: redpanda-console
+    spec:
+      containers:
+        - name: redpanda-console
+          image: docker.redpanda.com/redpandadata/console:v3.13.0
+          env:
+            - name: KAFKA_BROKERS
+              value: redpanda:9092
+            - name: SCHEMAREGISTRY_ENABLED
+              value: "true"
+            - name: SCHEMAREGISTRY_URLS
+              value: http://redpanda:8081
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10

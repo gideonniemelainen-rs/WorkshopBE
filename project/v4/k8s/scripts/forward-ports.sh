@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Forwards the consumer (7000), producer (9091), Grafana (3000) and Prometheus (9090) to localhost. Ctrl+C stops them all.
+# Forwards the consumer (7000), producer (9091), Grafana (3000), Prometheus (9090) and Redpanda Console (8080) to localhost. Ctrl+C stops them all.
 set -euo pipefail
 
 NS=wikistream
@@ -9,7 +9,7 @@ if [[ "$(kubectl config current-context)" != "minikube" ]]; then
   exit 1
 fi
 
-kubectl -n "$NS" wait --for=condition=available deploy/consumer deploy/producer deploy/grafana deploy/prometheus --timeout=2m
+kubectl -n "$NS" wait --for=condition=available deploy/consumer deploy/producer deploy/grafana deploy/prometheus deploy/redpanda-console --timeout=2m
 
 # Retries on drop: a port-forward to a service pins one pod and dies when that pod is replaced by a rollout.
 forward() {
@@ -31,6 +31,7 @@ forward consumer 7000 &
 forward producer 9091 &
 forward grafana 3000 &
 forward prometheus 9090 &
+forward redpanda-console 8080 &
 
-echo "consumer http://localhost:7000  producer http://localhost:9091  grafana http://localhost:3000  prometheus http://localhost:9090"
+echo "consumer http://localhost:7000  producer http://localhost:9091  grafana http://localhost:3000  prometheus http://localhost:9090  console http://localhost:8080"
 wait

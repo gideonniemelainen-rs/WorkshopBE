@@ -44,7 +44,7 @@ fi
 kubectl apply -f k8s/00-namespace.yaml
 bash "$SCRIPT_DIR/sync-config.sh"
 
-kubectl apply -f k8s/10-config.yaml -f k8s/20-redpanda.yaml -f k8s/30-scylla.yaml -f k8s/40-prometheus.yaml -f k8s/50-grafana.yaml
+kubectl apply -f k8s/10-config.yaml -f k8s/20-redpanda.yaml -f k8s/30-scylla.yaml -f k8s/40-prometheus.yaml -f k8s/45-redpanda-console.yaml -f k8s/50-grafana.yaml
 kubectl -n "$NS" rollout status statefulset/redpanda --timeout=5m
 kubectl -n "$NS" rollout status statefulset/scylla --timeout=10m
 
@@ -61,7 +61,7 @@ if ! $WIPE; then
         kubectl -n "$NS" rollout restart deploy/"$deploy"
     done
 fi
-for deploy in prometheus grafana producer consumer; do
+for deploy in prometheus redpanda-console grafana producer consumer; do
     kubectl -n "$NS" rollout status deploy/"$deploy" --timeout=5m
 done
 
